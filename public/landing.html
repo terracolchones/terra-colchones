@@ -1,0 +1,169 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Sillón Giratorio Lounge Confort | Terra</title>
+    <style>
+      :root { color-scheme: light; font-family: Arial, Helvetica, sans-serif; }
+      * { box-sizing: border-box; }
+      body { margin: 0; min-height: 100dvh; background: #171717; }
+      main { width: min(100%, 448px); min-height: 100dvh; margin: auto; display: flex; flex-direction: column; background: #fff; }
+      .image { position: relative; min-height: 0; flex: 1; background: #eee; }
+      .image img { position: absolute; width: 100%; height: 100%; object-fit: cover; object-position: bottom; }
+      .badge { position: absolute; top: 13px; left: 13px; padding: 7px 10px; border-radius: 7px; background: rgba(0,0,0,.78); color:#fff; font: 11px monospace; }
+      .controls { padding: 15px 18px max(15px, env(safe-area-inset-bottom)); border-top: 1px solid #e5e5e5; box-shadow: 0 -3px 13px rgba(0,0,0,.08); }
+      .title { display:flex; justify-content:space-between; align-items:center; gap:12px; margin-bottom: 12px; }
+      h1 { margin:0; font-size:16px; line-height:1.2; color:#111; }
+      #color-label { font-size:12px; font-weight:700; color:#555; }
+      .colors { display:grid; grid-template-columns:repeat(3,1fr); gap:6px; }
+      button { font: inherit; -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
+      .color { min-height:35px; border:1px solid #ccc; border-radius:8px; background:#fafafa; color:#171717; font-size:12px; font-weight:700; }
+      .color.active { color:white; background:#171717; border-color:#171717; }
+      #confirm { width:100%; min-height:45px; margin-top:14px; border:0; border-radius:11px; background:#171717; color:#fff; font-size:12px; font-weight:800; letter-spacing:.7px; }
+      #confirm:disabled { opacity:.6; }
+      #return { width:100%; min-height:48px; margin-top:22px; border:0; border-radius:12px; background:#171717; color:#fff; font-size:13px; font-weight:800; letter-spacing:.3px; }
+      #return:disabled { opacity:.6; }
+      #error { min-height:16px; margin:8px 0 0; color:#b42318; font-size:12px; text-align:center; }
+      #confirmation { display:none; padding: 26px 20px max(24px, env(safe-area-inset-bottom)); background:#fff; }
+      #confirmation h2 { margin:12px 0 4px; color:#171717; font-size:23px; text-align:center; }
+      .check { display:grid; width:58px; height:58px; margin:auto; place-items:center; border-radius:50%; background:#dcfce7; color:#15803d; font-size:34px; font-weight:900; }
+      #confirmation-order { margin:0; color:#777; font-size:12px; text-align:center; letter-spacing:.5px; }
+      .summary { margin-top:24px; padding:16px; border:1px solid #e8e8e8; border-radius:13px; background:#fafafa; color:#333; font-size:14px; line-height:1.65; }
+      .summary strong { color:#171717; }
+      .next-step { margin-top:16px; padding:16px; border-radius:12px; background:#fffbeb; color:#854d0e; font-size:14px; line-height:1.45; }
+      .next-step strong { display:block; margin-bottom:3px; color:#713f12; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <div class="image">
+        <img id="product-image" src="/productos/sillon-lounge-amarillo.jpg" alt="Sillón Giratorio Lounge Confort color Amarillo" />
+        <span class="badge" id="color-badge">Color: Amarillo</span>
+      </div>
+      <section class="controls" id="selection">
+        <div class="title">
+          <h1>Sillón Giratorio Lounge Confort</h1>
+          <span id="color-label">Amarillo</span>
+        </div>
+        <div class="colors" aria-label="Elige un color">
+          <button class="color active" data-color="Amarillo" type="button">Amarillo</button>
+          <button class="color" data-color="Gris" type="button">Gris</button>
+          <button class="color" data-color="Azul" type="button">Azul</button>
+        </div>
+        <button id="confirm" type="button">CONFIRMAR PEDIDO</button>
+        <p id="error" role="alert"></p>
+      </section>
+      <section id="confirmation" aria-live="polite">
+        <div class="check">✅</div>
+        <h2>Pedido registrado</h2>
+        <p id="confirmation-order"></p>
+        <div class="summary">
+          <strong id="confirmation-product">Sillón Giratorio Lounge Confort</strong><br />
+          Color elegido: <strong id="confirmation-color"></strong>
+        </div>
+        <div class="next-step">
+          <strong>📍 Siguiente paso</strong>
+          Pulsa “Volver al chat” para cerrar esta página. Te enviaremos el botón de ubicación a tu chat de Terra.
+        </div>
+        <button id="return" type="button">VOLVER AL CHAT</button>
+      </section>
+    </main>
+    <script>
+      (function () {
+        var selectedColor = "Amarillo";
+        var imageByColor = {
+          Amarillo: "/productos/sillon-lounge-amarillo.jpg",
+          Gris: "/productos/sillon-lounge-gris.jpg",
+          Azul: "/productos/sillon-lounge-azul.jpg"
+        };
+        var orderId = new URLSearchParams(window.location.search).get("order") || "";
+        var image = document.getElementById("product-image");
+        var badge = document.getElementById("color-badge");
+        var label = document.getElementById("color-label");
+        var selection = document.getElementById("selection");
+        var confirm = document.getElementById("confirm");
+        var returnToChat = document.getElementById("return");
+        var confirmation = document.getElementById("confirmation");
+        var confirmationOrder = document.getElementById("confirmation-order");
+        var confirmationColor = document.getElementById("confirmation-color");
+        var error = document.getElementById("error");
+
+        function chooseColor(color) {
+          selectedColor = color;
+          image.src = imageByColor[color];
+          image.alt = "Sillón Giratorio Lounge Confort color " + color;
+          badge.textContent = "Color: " + color;
+          label.textContent = color;
+          document.querySelectorAll(".color").forEach(function (button) {
+            button.classList.toggle("active", button.dataset.color === color);
+          });
+        }
+
+        document.querySelectorAll(".color").forEach(function (button) {
+          button.addEventListener("click", function () { chooseColor(button.dataset.color); });
+        });
+
+        confirm.addEventListener("click", async function () {
+          if (!orderId) {
+            error.textContent = "Abre esta oferta desde el botón de WhatsApp.";
+            return;
+          }
+          error.textContent = "";
+          confirm.disabled = true;
+          confirm.textContent = "REGISTRANDO PEDIDO…";
+          try {
+            var response = await fetch("/api/orders/" + encodeURIComponent(orderId) + "/confirm", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ color: selectedColor })
+            });
+            var result = await response.json();
+            if (!response.ok || !result.confirmed) throw new Error(result.error || "No pudimos confirmar el pedido.");
+            selection.style.display = "none";
+            confirmation.style.display = "block";
+            confirmationOrder.textContent = "#" + orderId.replace("TERRA-", "");
+            confirmationColor.textContent = selectedColor;
+          } catch (requestError) {
+            error.textContent = requestError && requestError.message ? requestError.message : "No pudimos confirmar el pedido.";
+            confirm.disabled = false;
+            confirm.textContent = "CONFIRMAR PEDIDO";
+          }
+        });
+
+        returnToChat.addEventListener("click", async function () {
+          if (!orderId) return;
+          returnToChat.disabled = true;
+          returnToChat.textContent = "VOLVIENDO AL CHAT…";
+
+          var endpoint = "/api/orders/" + encodeURIComponent(orderId) + "/continue";
+          try {
+            // Encolamos el trigger antes de cerrar la página. `sendBeacon` permite
+            // que la petición continúe al abandonar la landing; el servidor manda
+            // el GPS al chat vinculado, no mediante un enlace externo.
+            var queued = navigator.sendBeacon && navigator.sendBeacon(
+              endpoint,
+              new Blob([""], { type: "text/plain;charset=UTF-8" })
+            );
+            if (!queued) {
+              fetch(endpoint, { method: "POST", keepalive: true }).catch(function () {});
+            }
+          } catch (_) {
+            // Si el navegador no admite beacon, el intento de fetch anterior no
+            // debe bloquear la salida de la landing ni abrir otro WhatsApp.
+          }
+
+          // Algunos navegadores móviles permiten cerrar esta vista y otros la
+          // conservan abierta. Si no puede cerrarse, volvemos al historial para
+          // regresar al chat. Nunca navegamos a wa.me ni a una segunda cuenta.
+          window.close();
+          window.setTimeout(function () {
+            if (document.visibilityState === "visible" && window.history.length > 1) {
+              window.history.back();
+            }
+          }, 300);
+        });
+      })();
+    </script>
+  </body>
+</html>

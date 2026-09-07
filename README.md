@@ -1,0 +1,194 @@
+# Agente de WhatsApp
+
+Dashboard local para un número real de WhatsApp conectado mediante la API oficial de Meta Cloud API. Guarda las conversaciones en SQLite y responde con la API oficial de OpenAI cuando cada conversación está en modo **IA**. En modo **HUMANO**, un operador puede responder desde el dashboard.
+
+No usa QR, WhatsApp Web, Baileys, Twilio, Redis, Prisma, WebSockets ni un proceso bot separado.
+
+Si conectas un proceso externo que sí genere códigos QR, el proyecto puede guardarlos en
+Supabase Storage mediante el endpoint privado `POST /api/qr`. Esto no cambia la conexión
+oficial de Meta Cloud API de esta aplicación.
+
+## Requisitos
+
+- Node.js 22 o superior (el proyecto incluye `.nvmrc` con 22).
+- Una app de Meta con el producto WhatsApp configurado.
+- Una clave de API de OpenAI con créditos.
+- Un dominio HTTPS público para recibir webhooks en producción. Para desarrollo local, ngrok o Cloudflare Tunnel.
+
+## Inicio rápido
+
+1. Instala las dependencias:
+
+   ```bash
+   npm install
+   ```
+
+2. Copia el archivo de variables y complétalo. En PowerShell:
+
+   ```powershell
+   Copy-Item .env.example .env.local
+   ```
+
+3. Inicia el dashboard:
+
+   ```bash
+   npm run dev
+   ```
+
+4. Abre [http://localhost:3000](http://localhost:3000). Si falta algo, aparecerá la pantalla **Configura tu API de WhatsApp** y cambiará automáticamente al dashboard apenas la configuración sea válida.
+
+5. En otra terminal, expón el servidor durante el desarrollo:
+
+   ```bash
+   ngrok http 3000
+   ```
+
+   Copia la URL HTTPS entregada por ngrok y registra `https://TU_URL/api/webhook` en el panel de Meta.
+
+## Variables de entorno
+
+```dotenv
+# Meta WhatsApp Cloud API
+META_ACCESS_TOKEN=EAAG...
+META_PHONE_NUMBER_ID=1234567890
+META_WABA_ID=1234567890
+META_APP_SECRET=abcdef...
+META_VERIFY_TOKEN=elige-un-token-aleatorio
+META_GRAPH_VERSION=v25.0
+
+# OpenAI API oficial
+OPENAI_API_KEY=sk-...
+OPENAI_MODEL=gpt-5.6-luna
+
+# Almacenamiento privado de QR en Supabase
+SUPABASE_URL=https://tu-proyecto.supabase.co
+SUPABASE_SECRET_KEY=sb_secret_...
+SUPABASE_QR_BUCKET=chatbot-qr
+SUPABASE_PAYMENT_QR_PATH=payment-qr.jpeg
+QR_UPLOAD_TOKEN=token-aleatorio-largo-compartido-con-el-generador-qr
+ORDER_CONFIRMATION_TOKEN=otro-token-aleatorio-largo-solo-para-tu-landing
+```
+
+- `META_ACCESS_TOKEN` debe ser un **System User Token permanente**. Los tokens de prueba de Meta duran 24 horas y no sirven para producción.
+- `META_PHONE_NUMBER_ID` identifica el número desde el que se envían los mensajes.
+- `META_WABA_ID` se conserva como referencia de la cuenta de WhatsApp Business; esta primera versión no necesita usarlo en requests.
+- `META_APP_SECRET` está en **App Dashboard → Settings → Basic** y es obligatorio para validar cada webhook.
+- `META_VERIFY_TOKEN` lo eliges tú. Debe coincidir exactamente con el valor configurado en Meta al crear el webhook.
+- `META_GRAPH_VERSION` está en `v25.0`, la versión ofrecida actualmente por el panel de pruebas de Meta. Revisa las versiones admitidas por Meta periódicamente.
+- `OPENAI_API_KEY` es la clave de la API oficial de OpenAI; nunca la expongas al navegador ni la subas a Git.
+- `OPENAI_MODEL` por defecto es `gpt-5.6-luna`, adecuado para alto volumen y coste contenido. Puedes establecer `gpt-5.6-terra` si prefieres mayor calidad. Consulta los [modelos de OpenAI](https://developers.openai.com/api/docs/models) para comparar capacidades y precios.
+- `SUPABASE_SECRET_KEY` es una clave secreta de servidor: no la expongas al navegador, no la envíes por chat y no la subas a Git. Es distinta de la clave publicable.
+- `QR_UPLOAD_TOKEN` protege el endpoint de carga. Usa un valor aleatorio largo distinto de las demás claves.
+
+## QR en Supabase Storage
+
+1. Crea o selecciona un proyecto en Supabase y, en **Storage**, crea el bucket privado `chatbot-qr` (no actives la opción pública).
+2. En **Connect** o **Settings → API Keys**, copia la URL del proyecto y crea/copia una **Secret key** (`sb_secret_...`). Guárdalas en las variables anteriores junto con un `QR_UPLOAD_TOKEN` aleatorio.
+3. Comprueba la conexión con `GET /api/qr`. Debe responder `{"configured":true,"reachable":true,"bucket":"chatbot-qr"}`.
+
+Para subir el QR de cobro que el operador enviará mediante el botón **Enviar QR de pago** en una conversación en modo HUMANO:
+
+```bash
+curl -X POST "$APP_URL/api/qr" \
+  -H "Authorization: Bearer $QR_UPLOAD_TOKEN" \
+  -F "kind=payment" \
+  -F "file=@qr-de-cobro.jpeg;type=image/jpeg"
+```
+
+Un proceso que genere un QR PNG dinámico puede actualizar el código de una sesión así:
+
+```bash
+curl -X POST "$APP_URL/api/qr" \
+  -H "Authorization: Bearer $QR_UPLOAD_TOKEN" \
+  -F "sessionId=principal" \
+  -F "file=@qr.png;type=image/png"
+```
+
+La respuesta devuelve una URL firmada válida por cinco minutos. Los QR se sobrescriben por sesión, se mantienen privados y no se guardan en el navegador. Al enviar un QR de pago, WhatsApp descarga esa URL temporal directamente desde Supabase; el dashboard solo conserva el registro “QR de pago enviado”.
+
+## Confirmación desde una landing
+
+La landing debe llamar a esta ruta **desde su servidor**, nunca desde JavaScript del navegador, cuando el pedido cambie a confirmado:
+
+```bash
+curl -X POST "$CHATBOT_URL/api/order-confirmations" \
+  -H "Authorization: Bearer $ORDER_CONFIRMATION_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"orderId":"pedido-123","customerPhone":"59170000000","customerName":"Cliente"}'
+```
+
+El `orderId` es idempotente: aunque la landing reintente la llamada, el QR no se envía dos veces. El número debe incluir el código de país y solo dígitos. WhatsApp solo permite mensajes de pago libres dentro de la ventana de 24 horas desde el último mensaje del cliente; fuera de ella se devuelve un error para que la landing pueda pedir intervención del operador.
+
+## Configuración de Meta
+
+1. Entra a [Meta for Developers](https://developers.facebook.com/) y crea una app de tipo Business.
+2. Agrega el producto **WhatsApp** y vincula/registra tu número.
+3. Copia Phone Number ID, WABA ID y App Secret a `.env.local`.
+4. Desde Business Settings genera un **System User Token** permanente con los permisos necesarios para WhatsApp y cópialo como `META_ACCESS_TOKEN`.
+5. En WhatsApp → Configuration, registra la URL `https://TU_DOMINIO/api/webhook` y el mismo valor de `META_VERIFY_TOKEN`.
+6. Suscribe el webhook al campo `messages`.
+
+La verificación inicial de Meta usa:
+
+```text
+GET /api/webhook?hub.mode=subscribe&hub.verify_token=…&hub.challenge=…
+```
+
+La aplicación devuelve el `hub.challenge` como `text/plain`, tal como exige Meta.
+
+## Funcionamiento
+
+- `POST /api/webhook` valida `X-Hub-Signature-256` mediante HMAC SHA-256 calculado sobre el body crudo.
+- Responde `200` inmediatamente para evitar reintentos por timeout de Meta y procesa el evento de forma asíncrona.
+- Cada mensaje se deduplica por su `wa_message_id` antes de llamar a OpenAI o responder a WhatsApp.
+- Todos los datos locales se guardan en `data/messages.db` con SQLite y modo WAL.
+- En modo **IA**, se envían los últimos 20 mensajes a la [Responses API](https://developers.openai.com/api/reference/responses/create) con el prompt de `src/lib/system-prompt.ts`. Las respuestas se solicitan con `store: false`.
+- En modo **HUMANO**, el dashboard envía el texto directamente a Graph API y conserva un mensaje con icono de error si el envío falla.
+
+Personaliza el comportamiento del asistente en [src/lib/system-prompt.ts](src/lib/system-prompt.ts).
+
+## Límite de 24 horas de WhatsApp
+
+WhatsApp permite texto libre únicamente dentro de las 24 horas posteriores al último mensaje del cliente. Si un operador intenta contestar fuera de esa ventana, Graph API puede devolver el error `131047`. El dashboard muestra el aviso correspondiente y deja el mensaje local marcado como no enviado.
+
+Las plantillas preaprobadas de WhatsApp quedan fuera del alcance de esta versión.
+
+## Desarrollo y comprobaciones
+
+```bash
+npx tsc --noEmit
+npm run build
+npm run dev
+```
+
+Para probar el handshake sin Meta, visita:
+
+```text
+http://localhost:3000/api/webhook?hub.mode=subscribe&hub.verify_token=TU_TOKEN&hub.challenge=prueba
+```
+
+Debe devolver `prueba` como texto plano. Un `403` significa que el `META_VERIFY_TOKEN` no coincide. Un `401` al recibir un POST normalmente indica que `META_APP_SECRET` es incorrecto o que alguien cambió el body antes de calcular la firma.
+
+## Despliegue en EasyPanel
+
+El proyecto incluye `Procfile`, `nixpacks.toml` y `.nvmrc` para una única aplicación Next.js:
+
+```text
+web: npm run start
+```
+
+- Configura todas las variables de entorno en EasyPanel.
+- Agrega un volumen persistente montado en `/app/data`; allí vive `messages.db`.
+- Activa HTTPS antes de registrar el webhook: Meta no acepta URLs HTTP públicas.
+- El build usa `npm ci --include=dev` y el arranque usa `npm run start`.
+
+## Seguridad
+
+El webhook sí está protegido por firma HMAC. Sin embargo, el dashboard no incorpora autenticación en esta primera versión. No lo publiques sin protegerlo previamente con Basic Auth en el proxy, Cloudflare Access u otro mecanismo equivalente: cualquiera que alcance la URL podría leer conversaciones o enviar mensajes como operador.
+
+## Mejoras pendientes
+
+- Cola persistente y workers separados para cargas altas.
+- Plantillas de WhatsApp para reabrir conversaciones fuera de la ventana de 24 horas.
+- Soporte para audio, imágenes, documentos, ubicaciones y grupos.
+- Autenticación y auditoría de operadores del dashboard.
