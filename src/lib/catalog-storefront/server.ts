@@ -15,6 +15,9 @@ import type {
 
 const CATALOG_BUCKET = "catalog-images";
 const VALID_AVAILABILITY = new Set<ProductAvailability>(["available", "out_of_stock", "coming_soon"]);
+// Último recurso para no desactivar la compra si Graph o las variables de Meta
+// no están disponibles durante el renderizado del catálogo.
+const DEFAULT_CATALOG_WHATSAPP_PHONE = "59178600064";
 
 let client: SupabaseClient | undefined;
 
@@ -35,7 +38,8 @@ export function isCatalogConfigured(): boolean {
  */
 function configuredCatalogWhatsAppPhone(): string | null {
   return normalizeWhatsAppPhone(process.env.TERRA_WHATSAPP_PHONE)
-    ?? normalizeWhatsAppPhone(process.env.NEXT_PUBLIC_TERRA_WHATSAPP_PHONE);
+    ?? normalizeWhatsAppPhone(process.env.NEXT_PUBLIC_TERRA_WHATSAPP_PHONE)
+    ?? DEFAULT_CATALOG_WHATSAPP_PHONE;
 }
 
 export async function getCatalogWhatsAppPhone(): Promise<string | null> {
