@@ -27,6 +27,8 @@ import {
 } from "@/lib/meta/client";
 import { dispatchOrderLocationRequest } from "@/lib/order-location";
 import { sendPaymentQr } from "@/lib/payment-qr";
+import { getProductForCatalogLead } from "@/lib/catalog-storefront/server";
+import { parseCatalogLeadContext } from "@/lib/catalog-storefront/whatsapp";
 
 type RecordValue = Record<string, unknown>;
 
@@ -257,6 +259,23 @@ async function handleTextMessage(message: RecordValue, contactName: string | nul
   const freshConversation = getConversationById(conversation.id);
   if (!freshConversation || freshConversation.mode !== "AI") return;
 
+  // Los enlaces del catálogo llevan un identificador estable. Se atienden antes
+  // del flujo Lounge para que una consulta de colchones o almohadas no sea
+  // redirigida a una campaña distinta.
+  const catalogLead = parseCatalogLeadContext(content);
+  if (catalogLead) {
+    const selection = await getProductForCatalogLead(catalogLead.productId, catalogLead.variantId);
+    const productLabel = selection
+      ? `${selection.product.name}${selection.variant ? ` · ${selection.variant.label}` : ""}`
+      : "el producto que elegiste";
+    await sendAndStore(
+      conversation,
+      phone,
+      `¡Hola! Te ayudo con ${productLabel}. ¿Deseas que confirmemos disponibilidad y entrega para tu ciudad?`,
+    );
+    return;
+  }
+
   if (isRestartDemoIntent(content)) {
     await sendProductLanding(conversation, phone, origin, { forceNew: true });
     return;
@@ -282,7 +301,7 @@ async function handleTextMessage(message: RecordValue, contactName: string | nul
     await sendAndStore(
       conversation,
       phone,
-      "✅ Tu comprobante está en revisión. Un asesor te confirmará el despacho por este chat.",
+      "✅ Tu comprobante está en revisión. Un asesor validará el pago y se comunicará contigo. ¡Gracias por tu compra!",
     );
     return;
   }
@@ -399,7 +418,7 @@ async function handleImageMessage(message: RecordValue, contactName: string | nu
   await sendAndStore(
     conversation,
     phone,
-    `✅ Recibimos tu comprobante del pedido ${order.id}. Un asesor validará el pago y te confirmará el despacho.`,
+    `✅ Recibimos tu comprobante del pedido ${order.id}. Un asesor validará el pago y se comunicará contigo. ¡Gracias por tu compra!`,
   );
 }
 

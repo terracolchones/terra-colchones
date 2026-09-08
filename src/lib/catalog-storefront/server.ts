@@ -1,0 +1,189 @@
+import "server-only";
+
+import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import { DEFAULT_CATALOG_HOME, DEVELOPMENT_CATALOG_PREVIEW } from "@/lib/catalog-storefront/demo";
+import type {
+  CatalogHomeSettings,
+  CatalogImage,
+  CatalogProduct,
+  CatalogSnapshot,
+  CatalogVariant,
+  ProductAvailability,
+} from "@/lib/catalog-storefront/types";
+
+const CATALOG_BUCKET = "catalog-images";
+const VALID_AVAILABILITY = new Set<ProductAvailability>(["available", "out_of_stock", "coming_soon"]);
+
+let client: SupabaseClient | undefined;
+
+function configuredValue(name: "SUPABASE_URL" | "SUPABASE_SECRET_KEY"): string {
+  const value = process.env[name]?.trim();
+  if (!value) throw new Error(`${name} no está configurada`);
+  return value;
+}
+
+export function isCatalogConfigured(): boolean {
+  return Boolean(process.env.SUPABASE_URL?.trim() && process.env.SUPABASE_SECRET_KEY?.trim());
+}
+
+export function getCatalogServerClient(): SupabaseClient {
+  if (client) return client;
+
+  client = createClient(configuredValue("SUPABASE_URL"), configuredValue("SUPABASE_SECRET_KEY"), {
+    auth: { autoRefreshToken: false, persistSession: false, detectSessionInUrl: false },
+  });
+  return client;
+}
+
+function availability(value: unknown): ProductAvailability {
+  return typeof value === "string" && VALID_AVAILABILITY.has(value as ProductAvailability)
+    ? value as ProductAvailability
+    : "coming_soon";
+}
+
+function price(value: unknown): number | null {
+  const number = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(number) ? number : null;
+}
+
+function publicImageUrl(path: string): string {
+  if (!path || !isCatalogConfigured()) return "";
+  return getCatalogServerClient().storage.from(CATALOG_BUCKET).getPublicUrl(path).data.publicUrl;
+}
+
+function catalogSchemaMissing(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return message.includes("Could not find the table") || message.includes("relation \"catalog_");
+}
+
+function toImage(row: Record<string, unknown>): CatalogImage {
+  const path = typeof row.storage_path === "string" ? row.storage_path : "";
+  return {
+    id: String(row.id),
+    path,
+    url: publicImageUrl(path),
+    alt: typeof row.alt_text === "string" ? row.alt_text : "Imagen del producto Terra",
+    sortOrder: Number(row.sort_order) || 0,
+  };
+}
+
+function toVariant(row: Record<string, unknown>): CatalogVariant {
+  return {
+    id: String(row.id),
+    externalCode: typeof row.external_code === "string" ? row.external_code : null,
+    label: typeof row.label === "string" ? row.label : "Variante",
+    price: price(row.price),
+    compareAtPrice: price(row.compare_at_price),
+    availability: availability(row.availability),
+    active: row.active !== false,
+    sortOrder: Number(row.sort_order) || 0,
+  };
+}
+
+function toProduct(row: Record<string, unknown>): CatalogProduct {
+  const rawImages = Array.isArray(row.catalog_product_images) ? row.catalog_product_images : [];
+  const rawVariants = Array.isArray(row.catalog_variants) ? row.catalog_variants : [];
+  const rawSpecs = Array.isArray(row.specifications) ? row.specifications : [];
+
+  return {
+    id: String(row.id),
+    externalCode: typeof row.external_code === "string" ? row.external_code : null,
+    slug: typeof row.slug === "string" ? row.slug : String(row.id),
+    name: typeof row.name === "string" ? row.name : "Producto Terra",
+    category: typeof row.category === "string" ? row.category : "Otros",
+    shortDescription: typeof row.short_description === "string" ? row.short_description : "",
+    description: typeof row.description === "string" ? row.description : "",
+    specifications: rawSpecs.filter((item): item is string => typeof item === "string"),
+    priceFrom: price(row.price_from),
+    compareAtPriceFrom: price(row.compare_at_price_from),
+    availability: availability(row.availability),
+    published: row.published === true,
+    featured: row.featured === true,
+    sortOrder: Number(row.sort_order) || 0,
+    images: rawImages.map((item) => toImage(item as Record<string, unknown>)).sort((a, b) => a.sortOrder - b.sortOrder),
+    variants: rawVariants.map((item) => toVariant(item as Record<string, unknown>)).sort((a, b) => a.sortOrder - b.sortOrder),
+  };
+}
+
+function toHome(row: Record<string, unknown> | null): CatalogHomeSettings {
+  if (!row) return DEFAULT_CATALOG_HOME;
+  const imagePath = typeof row.image_path === "string" ? row.image_path : "";
+  return {
+    eyebrow: typeof row.eyebrow === "string" && row.eyebrow.trim() ? row.eyebrow : DEFAULT_CATALOG_HOME.eyebrow,
+    title: typeof row.title === "string" && row.title.trim() ? row.title : DEFAULT_CATALOG_HOME.title,
+    description: typeof row.description === "string" && row.description.trim() ? row.description : DEFAULT_CATALOG_HOME.description,
+    imageUrl: imagePath ? publicImageUrl(imagePath) : null,
+  };
+}
+
+const productFields = "id, external_code, slug, name, category, short_description, description, specifications, price_from, compare_at_price_from, availability, published, featured, sort_order, catalog_variants(id, external_code, label, price, compare_at_price, availability, active, sort_order), catalog_product_images(id, storage_path, alt_text, sort_order)";
+
+async function queryProducts(publishedOnly: boolean): Promise<CatalogProduct[]> {
+  const request = getCatalogServerClient().from("catalog_products").select(productFields).order("sort_order", { ascending: true });
+  const { data, error } = publishedOnly ? await request.eq("published", true) : await request;
+  if (error) throw new Error(error.message);
+  return (data ?? []).map((item) => toProduct(item as Record<string, unknown>));
+}
+
+export async function getCatalogSnapshot(): Promise<CatalogSnapshot> {
+  if (!isCatalogConfigured()) {
+    return { products: process.env.NODE_ENV === "production" ? [] : DEVELOPMENT_CATALOG_PREVIEW, home: DEFAULT_CATALOG_HOME };
+  }
+
+  try {
+    const [products, homeResult] = await Promise.all([
+      queryProducts(true),
+      getCatalogServerClient().from("catalog_home_settings").select("eyebrow, title, description, image_path").eq("id", "home").maybeSingle(),
+    ]);
+    if (homeResult.error) throw new Error(homeResult.error.message);
+    return { products, home: toHome(homeResult.data as Record<string, unknown> | null) };
+  } catch (error) {
+    if (!catalogSchemaMissing(error)) console.error("[catalog] no se pudo leer el catálogo publicado:", error);
+    return { products: process.env.NODE_ENV === "production" ? [] : DEVELOPMENT_CATALOG_PREVIEW, home: DEFAULT_CATALOG_HOME };
+  }
+}
+
+export async function getPublishedProductBySlug(slug: string): Promise<CatalogProduct | null> {
+  if (!isCatalogConfigured()) {
+    return process.env.NODE_ENV === "production" ? null : DEVELOPMENT_CATALOG_PREVIEW.find((product) => product.slug === slug) ?? null;
+  }
+  try {
+    const { data, error } = await getCatalogServerClient()
+      .from("catalog_products")
+      .select(productFields)
+      .eq("slug", slug)
+      .eq("published", true)
+      .maybeSingle();
+    if (error) throw new Error(error.message);
+    return data ? toProduct(data as Record<string, unknown>) : null;
+  } catch (error) {
+    if (!catalogSchemaMissing(error)) console.error("[catalog] no se pudo leer un producto publicado:", error);
+    return process.env.NODE_ENV === "production" ? null : DEVELOPMENT_CATALOG_PREVIEW.find((product) => product.slug === slug) ?? null;
+  }
+}
+
+export async function getProductForCatalogLead(productId: string, variantId: string | null): Promise<{ product: CatalogProduct; variant: CatalogVariant | null } | null> {
+  if (!isCatalogConfigured()) return null;
+  try {
+    const { data, error } = await getCatalogServerClient()
+      .from("catalog_products")
+      .select(productFields)
+      .eq("id", productId)
+      .eq("published", true)
+      .maybeSingle();
+    if (error || !data) return null;
+    const product = toProduct(data as Record<string, unknown>);
+    const variant = variantId ? product.variants.find((item) => item.id === variantId && item.active) ?? null : null;
+    return { product, variant };
+  } catch (error) {
+    if (!catalogSchemaMissing(error)) console.error("[catalog] no se pudo resolver el contexto de WhatsApp:", error);
+    return null;
+  }
+}
+
+export async function getAdminCatalogProducts(): Promise<CatalogProduct[]> {
+  if (!isCatalogConfigured()) return DEVELOPMENT_CATALOG_PREVIEW;
+  return queryProducts(false);
+}
+
+export { CATALOG_BUCKET };

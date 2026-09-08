@@ -4,7 +4,7 @@ import { insertMessage, updateMessageWaId } from "@/lib/db";
 import { sendImageMessage } from "@/lib/meta/client";
 import { getPaymentQrSignedUrl } from "@/lib/supabase-qr";
 
-const PAYMENT_CAPTION = "✅ Pedido listo para coordinar entrega. Escanea este código QR para realizar el pago y envía tu comprobante por este chat. Un asesor lo validará antes del despacho.";
+const PAYMENT_CAPTION = "✅ Pedido listo para coordinar entrega. Escanea este código QR para realizar el pago y envía tu comprobante por este chat. Un asesor validará el pago y se comunicará contigo. Gracias por tu compra.";
 const LOCAL_MESSAGE = "QR de pago enviado.";
 
 export async function sendPaymentQr(

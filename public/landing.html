@@ -22,9 +22,12 @@
       .color.active { color:white; background:#171717; border-color:#171717; }
       #confirm { width:100%; min-height:45px; margin-top:14px; border:0; border-radius:11px; background:#171717; color:#fff; font-size:12px; font-weight:800; letter-spacing:.7px; }
       #confirm:disabled { opacity:.6; }
-      #return { width:100%; min-height:48px; margin-top:22px; border:0; border-radius:12px; background:#171717; color:#fff; font-size:13px; font-weight:800; letter-spacing:.3px; }
+      #return, #return-link { width:100%; min-height:48px; margin-top:22px; border:0; border-radius:12px; background:#171717; color:#fff; font-size:13px; font-weight:800; letter-spacing:.3px; }
+      #return-link { display:flex; align-items:center; justify-content:center; text-decoration:none; }
+      #return-link[hidden] { display:none; }
       #return:disabled { opacity:.6; }
       #error { min-height:16px; margin:8px 0 0; color:#b42318; font-size:12px; text-align:center; }
+      #return-error { min-height:16px; margin:10px 0 0; color:#b42318; font-size:12px; text-align:center; }
       #confirmation { display:none; padding: 26px 20px max(24px, env(safe-area-inset-bottom)); background:#fff; }
       #confirmation h2 { margin:12px 0 4px; color:#171717; font-size:23px; text-align:center; }
       .check { display:grid; width:58px; height:58px; margin:auto; place-items:center; border-radius:50%; background:#dcfce7; color:#15803d; font-size:34px; font-weight:900; }
@@ -64,9 +67,11 @@
         </div>
         <div class="next-step">
           <strong>📍 Siguiente paso</strong>
-          Pulsa “Volver al chat” para cerrar esta página. Te enviaremos el botón de ubicación a tu chat de Terra.
+          Pulsa “Volver al chat”. Confirmaremos la solicitud de ubicación y abriremos tu conversación de Terra.
         </div>
         <button id="return" type="button">VOLVER AL CHAT</button>
+        <a id="return-link" href="#" hidden>ABRIR WHATSAPP</a>
+        <p id="return-error" role="alert"></p>
       </section>
     </main>
     <script>
@@ -84,6 +89,8 @@
         var selection = document.getElementById("selection");
         var confirm = document.getElementById("confirm");
         var returnToChat = document.getElementById("return");
+        var returnLink = document.getElementById("return-link");
+        var returnError = document.getElementById("return-error");
         var confirmation = document.getElementById("confirmation");
         var confirmationOrder = document.getElementById("confirmation-order");
         var confirmationColor = document.getElementById("confirmation-color");
@@ -132,36 +139,41 @@
         });
 
         returnToChat.addEventListener("click", async function () {
-          if (!orderId) return;
+          if (!orderId || returnToChat.disabled) return;
           returnToChat.disabled = true;
-          returnToChat.textContent = "VOLVIENDO AL CHAT…";
+          returnToChat.textContent = "SOLICITANDO UBICACIÓN…";
+          returnError.textContent = "";
 
           var endpoint = "/api/orders/" + encodeURIComponent(orderId) + "/continue";
+          var controller = new AbortController();
+          var timeout = window.setTimeout(function () { controller.abort(); }, 15000);
           try {
-            // Encolamos el trigger antes de cerrar la página. `sendBeacon` permite
-            // que la petición continúe al abandonar la landing; el servidor manda
-            // el GPS al chat vinculado, no mediante un enlace externo.
-            var queued = navigator.sendBeacon && navigator.sendBeacon(
-              endpoint,
-              new Blob([""], { type: "text/plain;charset=UTF-8" })
-            );
-            if (!queued) {
-              fetch(endpoint, { method: "POST", keepalive: true }).catch(function () {});
+            var response = await fetch(endpoint, { method: "POST", signal: controller.signal });
+            var result = await response.json().catch(function () { return {}; });
+            if (!response.ok || !result.continued) {
+              throw new Error(result.error || "No pudimos solicitar tu ubicación.");
             }
-          } catch (_) {
-            // Si el navegador no admite beacon, el intento de fetch anterior no
-            // debe bloquear la salida de la landing ni abrir otro WhatsApp.
-          }
+            if (typeof result.chatUrl !== "string" || !/^https:\/\/wa\.me\/[1-9]\d{7,14}$/.test(result.chatUrl)) {
+              throw new Error("No pudimos preparar el regreso al chat de Terra.");
+            }
 
-          // Algunos navegadores móviles permiten cerrar esta vista y otros la
-          // conservan abierta. Si no puede cerrarse, volvemos al historial para
-          // regresar al chat. Nunca navegamos a wa.me ni a una segunda cuenta.
-          window.close();
-          window.setTimeout(function () {
-            if (document.visibilityState === "visible" && window.history.length > 1) {
-              window.history.back();
-            }
-          }, 300);
+            // El enlace oficial de WhatsApp abre exactamente la conversación de
+            // Terra. Lo dejamos visible como respaldo antes de intentar el salto.
+            returnLink.href = result.chatUrl;
+            returnLink.hidden = false;
+            returnToChat.hidden = true;
+            window.location.replace(result.chatUrl);
+          } catch (requestError) {
+            returnError.textContent = requestError && requestError.name === "AbortError"
+              ? "La solicitud está tardando demasiado. Inténtalo nuevamente."
+              : requestError && requestError.message
+              ? requestError.message
+              : "No pudimos volver al chat. Inténtalo nuevamente.";
+            returnToChat.disabled = false;
+            returnToChat.textContent = "VOLVER AL CHAT";
+          } finally {
+            window.clearTimeout(timeout);
+          }
         });
       })();
     </script>
