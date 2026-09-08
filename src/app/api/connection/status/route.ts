@@ -1,6 +1,7 @@
-import { NextResponse } from "next/server";
+import { NextResponse, type NextRequest } from "next/server";
 import { getPhoneNumberInfo, isExpiredMetaAccessToken } from "@/lib/meta/client";
 import type { PublicWebhookStatus } from "@/components/types";
+import { requireDashboardAuth } from "@/lib/dashboard-auth";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -48,7 +49,10 @@ async function publicWebhookStatus(): Promise<PublicWebhookStatus> {
   }
 }
 
-export async function GET() {
+export async function GET(request: NextRequest) {
+  const blocked = requireDashboardAuth(request);
+  if (blocked) return blocked;
+
   const missing = REQUIRED_ENV.filter((key) => !process.env[key]?.trim());
   if (missing.length > 0) {
     return NextResponse.json(

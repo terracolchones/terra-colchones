@@ -1,10 +1,14 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { jsonError, requireCatalogAdmin, uploadCatalogImage } from "@/lib/catalog-storefront/admin-server";
+import { requireDashboardAuth } from "@/lib/dashboard-auth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function POST(request: NextRequest) {
+  const blocked = requireDashboardAuth(request);
+  if (blocked) return blocked;
+
   try {
     await requireCatalogAdmin(request);
     const form = await request.formData();

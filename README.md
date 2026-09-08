@@ -86,6 +86,7 @@ ORDER_CONFIRMATION_TOKEN=otro-token-aleatorio-largo-para-un-sistema-externo
 - `OPENAI_MODEL` por defecto es `gpt-5.6-luna`, adecuado para alto volumen y coste contenido. Puedes establecer `gpt-5.6-terra` si prefieres mayor calidad. Consulta los [modelos de OpenAI](https://developers.openai.com/api/docs/models) para comparar capacidades y precios.
 - `SUPABASE_SECRET_KEY` es una clave secreta de servidor: no la expongas al navegador, no la envíes por chat y no la subas a Git. Es distinta de la clave publicable.
 - `QR_UPLOAD_TOKEN` protege el endpoint de carga. Usa un valor aleatorio largo distinto de las demás claves.
+- `DASHBOARD_BASIC_AUTH_USER` y `DASHBOARD_BASIC_AUTH_PASSWORD` protegen el dashboard de operadores y `/catalogo-admin` mediante HTTP Basic Auth. Usa una contraseña aleatoria de al menos 32 caracteres y no reutilices ninguna otra clave. Si falta cualquiera de las dos, esas rutas quedan cerradas con `503`; `/api/webhook` no usa Basic Auth para que Meta pueda verificarlo y enviar eventos firmados.
 
 ## QR en Supabase Storage
 
@@ -194,7 +195,7 @@ web: npm run start
 
 ## Seguridad
 
-El webhook sí está protegido por firma HMAC. Sin embargo, el dashboard no incorpora autenticación en esta primera versión. No lo publiques sin protegerlo previamente con Basic Auth en el proxy, Cloudflare Access u otro mecanismo equivalente: cualquiera que alcance la URL podría leer conversaciones o enviar mensajes como operador.
+El webhook está protegido por firma HMAC. El dashboard de operadores y sus APIs sensibles usan HTTP Basic Auth configurado con `DASHBOARD_BASIC_AUTH_USER` y `DASHBOARD_BASIC_AUTH_PASSWORD`, además de una comprobación dentro de cada API sensible. Mantén esas credenciales sólo en el gestor de secretos del servidor, usa HTTPS y añade Cloudflare Access o una capa equivalente cuando sea posible. El webhook `/api/webhook` queda deliberadamente fuera de Basic Auth porque Meta debe poder verificarlo y enviar eventos firmados.
 
 ## Mejoras pendientes
 

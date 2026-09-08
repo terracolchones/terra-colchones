@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { getConversationById } from "@/lib/db";
 import { sendPaymentQr } from "@/lib/payment-qr";
+import { requireDashboardAuth } from "@/lib/dashboard-auth";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -14,7 +15,10 @@ function parseId(value: string): number | null {
   return Number.isInteger(id) && id > 0 ? id : null;
 }
 
-export async function POST(_request: NextRequest, { params }: Context) {
+export async function POST(request: NextRequest, { params }: Context) {
+  const blocked = requireDashboardAuth(request);
+  if (blocked) return blocked;
+
   const id = parseId((await params).conversationId);
   if (!id) return NextResponse.json({ error: "id inválido" }, { status: 400 });
 
