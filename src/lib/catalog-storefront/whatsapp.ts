@@ -1,18 +1,23 @@
 import type { CatalogLeadContext, CatalogProduct, CatalogVariant } from "@/lib/catalog-storefront/types";
 
-const DEFAULT_TERRA_PHONE = "59178600064";
 const CONTEXT_PATTERN = /\[TERRA-CAT:([0-9a-f-]{36})(?::([0-9a-f-]{36}|base))?\]/i;
+const WHATSAPP_PHONE_PATTERN = /^[1-9]\d{7,14}$/;
 
-function phoneNumber(): string {
-  const configured = process.env.NEXT_PUBLIC_TERRA_WHATSAPP_PHONE?.replace(/\D/g, "");
-  return configured && /^\d{8,15}$/.test(configured) ? configured : DEFAULT_TERRA_PHONE;
+export function normalizeWhatsAppPhone(value: string | null | undefined): string | null {
+  const digits = value?.replace(/\D/g, "") ?? "";
+  return WHATSAPP_PHONE_PATTERN.test(digits) ? digits : null;
 }
 
-export function buildCatalogWhatsAppUrl(product: CatalogProduct, variant: CatalogVariant | null): string {
+export function buildCatalogWhatsAppUrl(
+  product: CatalogProduct,
+  variant: CatalogVariant | null,
+  phone: string | null,
+): string | null {
+  if (!phone) return null;
   const variantLine = variant ? ` Variante: ${variant.label}.` : "";
   const variantContext = variant?.id ?? "base";
   const message = `Hola Terra, quiero consultar ${product.name}.${variantLine} [TERRA-CAT:${product.id}:${variantContext}]`;
-  return `https://wa.me/${phoneNumber()}?text=${encodeURIComponent(message)}`;
+  return `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
 }
 
 export function parseCatalogLeadContext(content: string): CatalogLeadContext | null {

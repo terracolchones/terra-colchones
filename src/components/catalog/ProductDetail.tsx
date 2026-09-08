@@ -12,9 +12,10 @@ import { buildCatalogWhatsAppUrl } from "@/lib/catalog-storefront/whatsapp";
 
 interface ProductDetailProps {
   product: CatalogProduct;
+  whatsAppPhone: string | null;
 }
 
-export function ProductDetail({ product }: ProductDetailProps) {
+export function ProductDetail({ product, whatsAppPhone }: ProductDetailProps) {
   const activeVariants = useMemo(() => product.variants.filter((variant) => variant.active), [product.variants]);
   const [selectedVariantId, setSelectedVariantId] = useState(activeVariants[0]?.id ?? null);
   const [activeImage, setActiveImage] = useState(0);
@@ -23,7 +24,7 @@ export function ProductDetail({ product }: ProductDetailProps) {
   const compareAtPrice = selectedVariant?.compareAtPrice ?? product.compareAtPriceFrom;
   const currentAvailability = selectedVariant?.availability ?? product.availability;
   const activeImageUrl = product.images[activeImage]?.url ?? product.images[0]?.url ?? null;
-  const whatsAppUrl = buildCatalogWhatsAppUrl(product, selectedVariant);
+  const whatsAppUrl = buildCatalogWhatsAppUrl(product, selectedVariant, whatsAppPhone);
 
   return (
     <main className="min-h-dvh bg-white pb-24 text-stone-900">
@@ -122,9 +123,15 @@ export function ProductDetail({ product }: ProductDetailProps) {
             <p className="truncate text-xs text-stone-500">Compra por WhatsApp</p>
             <p className="truncate text-xs font-semibold text-stone-900 sm:text-sm">{selectedVariant?.label ?? product.name}</p>
           </div>
-          <a href={whatsAppUrl} target="_blank" rel="noreferrer" className="inline-flex min-h-11 shrink-0 items-center justify-center rounded-xl bg-[#148a4a] px-4 text-sm font-bold text-white shadow-lg shadow-[#148a4a]/20 transition hover:bg-[#0f743d] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#148a4a] sm:min-h-12 sm:px-5">
-            Comprar
-          </a>
+          {whatsAppUrl ? (
+            <a href={whatsAppUrl} target="_blank" rel="noreferrer" className="inline-flex min-h-11 shrink-0 items-center justify-center rounded-xl bg-[#148a4a] px-4 text-sm font-bold text-white shadow-lg shadow-[#148a4a]/20 transition hover:bg-[#0f743d] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#148a4a] sm:min-h-12 sm:px-5">
+              Comprar
+            </a>
+          ) : (
+            <button type="button" disabled title="No hay un número de WhatsApp configurado" className="inline-flex min-h-11 shrink-0 items-center justify-center rounded-xl bg-stone-300 px-4 text-sm font-bold text-stone-600 sm:min-h-12 sm:px-5">
+              WhatsApp no disponible
+            </button>
+          )}
         </div>
       </div>
     </main>

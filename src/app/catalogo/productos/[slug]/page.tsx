@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { ProductDetail } from "@/components/catalog/ProductDetail";
-import { getPublishedProductBySlug } from "@/lib/catalog-storefront/server";
+import { getCatalogWhatsAppPhone, getPublishedProductBySlug } from "@/lib/catalog-storefront/server";
 
 export const dynamic = "force-dynamic";
 
@@ -18,7 +18,10 @@ export async function generateMetadata({ params }: ProductPageProps): Promise<Me
 
 export default async function ProductPage({ params }: ProductPageProps) {
   const { slug } = await params;
-  const product = await getPublishedProductBySlug(slug);
+  const [product, whatsAppPhone] = await Promise.all([
+    getPublishedProductBySlug(slug),
+    getCatalogWhatsAppPhone(),
+  ]);
   if (!product) notFound();
-  return <ProductDetail product={product} />;
+  return <ProductDetail product={product} whatsAppPhone={whatsAppPhone} />;
 }

@@ -27,32 +27,7 @@ export interface Message {
   created_at: number;
 }
 
-export type OrderStatus =
-  | "draft"
-  | "awaiting_location"
-  | "awaiting_payment"
-  | "payment_proof_received"
-  | "payment_confirmed";
-
-export interface Order {
-  id: string;
-  conversation_id: number;
-  product_slug: string;
-  product_name: string;
-  color: string | null;
-  status: OrderStatus;
-  /** Solo se activa cuando el bot ya envió la solicitud GPS nativa. */
-  location_requested: number;
-  latitude: number | null;
-  longitude: number | null;
-  location_name: string | null;
-  location_address: string | null;
-  created_at: number;
-  updated_at: number;
-}
-
 type PaymentQrDeliveryStatus = "sending" | "sent" | "failed";
-type LocationRequestDeliveryStatus = "sending" | "sent" | "failed";
 
 const dataDirectory = path.join(process.cwd(), "data");
 let database: Database.Database | undefined;
@@ -62,10 +37,7 @@ let database: Database.Database | undefined;
  * durante el build. Abrirlo solo al atender una request evita competir por WAL.
  */
 function getDatabase(): Database.Database {
-  if (database) {
-    ensureOrderMigrations(database);
-    return database;
-  }
+  if (database) return database;
 
   fs.mkdirSync(dataDirectory, { recursive: true });
   const instance = new Database(path.join(dataDirectory, "messages.db"));
@@ -117,44 +89,9 @@ function getDatabase(): Database.Database {
     updated_at INTEGER NOT NULL DEFAULT (unixepoch())
   );
 
-  CREATE TABLE IF NOT EXISTS orders (
-    id TEXT PRIMARY KEY,
-    conversation_id INTEGER NOT NULL REFERENCES conversations(id),
-    product_slug TEXT NOT NULL,
-    product_name TEXT NOT NULL,
-    color TEXT,
-    status TEXT CHECK(status IN ('draft', 'awaiting_location', 'awaiting_payment', 'payment_proof_received', 'payment_confirmed')) NOT NULL DEFAULT 'draft',
-    location_requested INTEGER NOT NULL DEFAULT 0,
-    latitude REAL,
-    longitude REAL,
-    location_name TEXT,
-    location_address TEXT,
-    created_at INTEGER NOT NULL DEFAULT (unixepoch()),
-    updated_at INTEGER NOT NULL DEFAULT (unixepoch())
-  );
-
-  CREATE INDEX IF NOT EXISTS idx_orders_conversation
-    ON orders(conversation_id, created_at DESC);
-
-  CREATE TABLE IF NOT EXISTS location_request_deliveries (
-    order_id TEXT PRIMARY KEY REFERENCES orders(id),
-    status TEXT CHECK(status IN ('sending', 'sent', 'failed')) NOT NULL,
-    wa_message_id TEXT,
-    attempts INTEGER NOT NULL DEFAULT 0,
-    updated_at INTEGER NOT NULL DEFAULT (unixepoch())
-  );
 `);
-  ensureOrderMigrations(instance);
   database = instance;
   return instance;
-}
-
-/** Mantiene funcionando las bases creadas antes del flujo de dos pasos. */
-function ensureOrderMigrations(db: Database.Database): void {
-  const columns = db.prepare("PRAGMA table_info(orders)").all() as Array<{ name: string }>;
-  if (!columns.some((column) => column.name === "location_requested")) {
-    db.exec("ALTER TABLE orders ADD COLUMN location_requested INTEGER NOT NULL DEFAULT 0");
-  }
 }
 
 export type PaymentQrReservation = "reserved" | "already_sent" | "in_progress";
@@ -197,170 +134,6 @@ export function failPaymentQrDelivery(orderId: string): void {
   db.prepare(
     "UPDATE payment_qr_deliveries SET status = 'failed', updated_at = unixepoch() WHERE order_id = ?",
   ).run(orderId);
-}
-
-export type LocationRequestReservation = "reserved" | "already_sent" | "in_progress" | "not_ready";
-
-/**
- * Reserva de forma atómica el único envío del botón nativo de ubicación.
- * El pedido no acepta GPS hasta que `completeLocationRequestDelivery` termina.
- */
-export function reserveLocationRequestDelivery(
-  orderId: string,
-): { reservation: LocationRequestReservation; order: Order | undefined } {
-  const db = getDatabase();
-  const transaction = db.transaction(() => {
-    const order = db.prepare("SELECT * FROM orders WHERE id = ?").get(orderId) as Order | undefined;
-    if (!order || order.status !== "awaiting_location") {
-      return { reservation: "not_ready" as const, order };
-    }
-    if (order.location_requested === 1) {
-      return { reservation: "already_sent" as const, order };
-    }
-
-    const existing = db
-      .prepare("SELECT status, updated_at FROM location_request_deliveries WHERE order_id = ?")
-      .get(orderId) as { status: LocationRequestDeliveryStatus; updated_at: number } | undefined;
-
-    if (existing?.status === "sent") {
-      db.prepare(
-        "UPDATE orders SET location_requested = 1, updated_at = unixepoch() WHERE id = ? AND status = 'awaiting_location'",
-      ).run(orderId);
-      return { reservation: "already_sent" as const, order: getOrderById(orderId) };
-    }
-    if (existing?.status === "sending" && Date.now() / 1000 - existing.updated_at < 300) {
-      return { reservation: "in_progress" as const, order };
-    }
-
-    if (existing) {
-      db.prepare(
-        "UPDATE location_request_deliveries SET status = 'sending', attempts = attempts + 1, updated_at = unixepoch() WHERE order_id = ?",
-      ).run(orderId);
-    } else {
-      db.prepare(
-        "INSERT INTO location_request_deliveries (order_id, status, attempts) VALUES (?, 'sending', 1)",
-      ).run(orderId);
-    }
-    return { reservation: "reserved" as const, order };
-  });
-  return transaction();
-}
-
-export function completeLocationRequestDelivery(orderId: string, waMessageId: string): void {
-  const db = getDatabase();
-  const transaction = db.transaction(() => {
-    db.prepare(
-      "UPDATE location_request_deliveries SET status = 'sent', wa_message_id = ?, updated_at = unixepoch() WHERE order_id = ?",
-    ).run(waMessageId, orderId);
-    db.prepare(
-      "UPDATE orders SET location_requested = 1, updated_at = unixepoch() WHERE id = ? AND status = 'awaiting_location'",
-    ).run(orderId);
-  });
-  transaction();
-}
-
-export function failLocationRequestDelivery(orderId: string): void {
-  const db = getDatabase();
-  db.prepare(
-    "UPDATE location_request_deliveries SET status = 'failed', updated_at = unixepoch() WHERE order_id = ?",
-  ).run(orderId);
-}
-
-function orderIdentifier(): string {
-  return `TERRA-${crypto.randomUUID().replace(/-/g, "").slice(0, 12).toUpperCase()}`;
-}
-
-export function createDraftOrder(
-  conversationId: number,
-  product: { slug: string; name: string },
-): Order {
-  const db = getDatabase();
-  const id = orderIdentifier();
-  db.prepare(
-    "INSERT INTO orders (id, conversation_id, product_slug, product_name) VALUES (?, ?, ?, ?)",
-  ).run(id, asPositiveId(conversationId), product.slug, product.name);
-  return getOrderById(id)!;
-}
-
-export function getOrderById(orderId: string): Order | undefined {
-  const db = getDatabase();
-  return db.prepare("SELECT * FROM orders WHERE id = ?").get(orderId) as Order | undefined;
-}
-
-/** Confirma una selección heredada de la landing. El id impredecible vincula el pedido al chat correcto. */
-export function confirmOrderFromLanding(orderId: string, color: string): Order | undefined {
-  const db = getDatabase();
-  const result = db.prepare(
-    "UPDATE orders SET color = ?, status = 'awaiting_location', updated_at = unixepoch() WHERE id = ? AND status = 'draft'",
-  ).run(color, orderId);
-  if (result.changes === 0) return getOrderById(orderId);
-  return getOrderById(orderId);
-}
-
-/** Guarda un color elegido desde un botón nativo sin adelantar el paso de confirmación. */
-export function selectOrderColor(
-  orderId: string,
-  conversationId: number,
-  color: string,
-): Order | undefined {
-  const db = getDatabase();
-  const result = db.prepare(
-    `UPDATE orders
-     SET color = ?, updated_at = unixepoch()
-     WHERE id = ? AND conversation_id = ? AND status = 'draft'`,
-  ).run(color, orderId, asPositiveId(conversationId));
-  return result.changes > 0 ? getOrderById(orderId) : undefined;
-}
-
-export function getLatestOrderForConversation(
-  conversationId: number,
-  statuses?: OrderStatus[],
-): Order | undefined {
-  const db = getDatabase();
-  const id = asPositiveId(conversationId);
-  if (!statuses?.length) {
-    return db.prepare("SELECT * FROM orders WHERE conversation_id = ? ORDER BY created_at DESC, rowid DESC LIMIT 1").get(id) as Order | undefined;
-  }
-  const placeholders = statuses.map(() => "?").join(", ");
-  return db.prepare(
-    `SELECT * FROM orders WHERE conversation_id = ? AND status IN (${placeholders}) ORDER BY created_at DESC, rowid DESC LIMIT 1`,
-  ).get(id, ...statuses) as Order | undefined;
-}
-
-/** Devuelve solo pedidos cuyo botón GPS ya fue enviado por el flujo controlado. */
-export function getLatestLocationRequestedOrderForConversation(conversationId: number): Order | undefined {
-  const db = getDatabase();
-  return db.prepare(
-    `SELECT * FROM orders
-     WHERE conversation_id = ? AND status = 'awaiting_location' AND location_requested = 1
-     ORDER BY created_at DESC, rowid DESC LIMIT 1`,
-  ).get(asPositiveId(conversationId)) as Order | undefined;
-}
-
-export function getOrderForConversation(orderId: string, conversationId: number): Order | undefined {
-  const db = getDatabase();
-  return db.prepare("SELECT * FROM orders WHERE id = ? AND conversation_id = ?").get(orderId, asPositiveId(conversationId)) as Order | undefined;
-}
-
-export function saveOrderLocation(
-  orderId: string,
-  location: { latitude: number; longitude: number; name?: string | null; address?: string | null },
-): { saved: boolean; order: Order | undefined } {
-  const db = getDatabase();
-  const result = db.prepare(
-    `UPDATE orders
-     SET latitude = ?, longitude = ?, location_name = ?, location_address = ?, status = 'awaiting_payment', updated_at = unixepoch()
-     WHERE id = ? AND status = 'awaiting_location' AND location_requested = 1`,
-  ).run(location.latitude, location.longitude, location.name ?? null, location.address ?? null, orderId);
-  return { saved: result.changes > 0, order: result.changes > 0 ? getOrderById(orderId) : undefined };
-}
-
-export function markOrderPaymentProof(orderId: string): Order | undefined {
-  const db = getDatabase();
-  db.prepare(
-    "UPDATE orders SET status = 'payment_proof_received', updated_at = unixepoch() WHERE id = ? AND status = 'awaiting_payment'",
-  ).run(orderId);
-  return getOrderById(orderId);
 }
 
 function asPositiveId(id: number): number {

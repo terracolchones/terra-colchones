@@ -86,90 +86,22 @@ async function sendGraphMessage(phone: string, message: GraphMessagePayload): Pr
   return { wa_message_id: id };
 }
 
-/** Abre la landing de compra vinculada al pedido de esta conversación. */
-export async function sendLandingCtaMessage(
+/** Abre el catálogo público desde una conversación de WhatsApp. */
+export async function sendCatalogCtaMessage(
   phone: string,
-  landingUrl: string,
-  productName: string,
+  catalogUrl: string,
 ): Promise<{ wa_message_id: string }> {
   return sendGraphMessage(phone, {
     type: "interactive",
     interactive: {
       type: "cta_url",
-      header: { type: "text", text: "🛋️ Terra" },
-      body: { text: `Elige el color de tu ${productName} y confirma tu pedido.` },
-      footer: { text: "🛒 Compra segura por WhatsApp" },
+      header: { type: "text", text: "Catálogo Terra" },
+      body: { text: "Explora nuestros productos y elige el que más te guste." },
+      footer: { text: "Atención directa por WhatsApp" },
       action: {
         name: "cta_url",
-        parameters: { display_text: "Ver producto", url: landingUrl },
+        parameters: { display_text: "Ver catálogo", url: catalogUrl },
       },
-    },
-  });
-}
-
-/** Selector nativo: no abre navegador ni saca al cliente de su conversación. */
-export async function sendColorSelectorMessage(
-  phone: string,
-  orderId: string,
-  imageUrl?: string,
-): Promise<{ wa_message_id: string }> {
-  return sendGraphMessage(phone, {
-    type: "interactive",
-    interactive: {
-      type: "button",
-      header: imageUrl
-        ? { type: "image", image: { link: imageUrl } }
-        : { type: "text", text: "🛋️ Terra" },
-      body: { text: "Sillón Giratorio Lounge Confort\nElige el color que prefieres." },
-      footer: { text: "Compra segura por WhatsApp" },
-      action: {
-        buttons: [
-          { type: "reply", reply: { id: `color:${orderId}:Amarillo`, title: "Amarillo" } },
-          { type: "reply", reply: { id: `color:${orderId}:Gris`, title: "Gris" } },
-          { type: "reply", reply: { id: `color:${orderId}:Azul`, title: "Azul" } },
-        ],
-      },
-    },
-  });
-}
-
-/** Segundo paso nativo: el cliente confirma antes de que se solicite el GPS. */
-export async function sendOrderConfirmationMessage(
-  phone: string,
-  orderId: string,
-  color: string,
-  imageUrl?: string,
-): Promise<{ wa_message_id: string }> {
-  return sendGraphMessage(phone, {
-    type: "interactive",
-    interactive: {
-      type: "button",
-      header: imageUrl
-        ? { type: "image", image: { link: imageUrl } }
-        : { type: "text", text: "🛋️ Terra" },
-      body: { text: `Elegiste color ${color}. ¿Confirmas tu pedido?` },
-      footer: { text: "Después solicitaremos tu ubicación" },
-      action: {
-        buttons: [
-          { type: "reply", reply: { id: `confirm:${orderId}`, title: "Confirmar pedido" } },
-          { type: "reply", reply: { id: `colors:${orderId}`, title: "Cambiar color" } },
-        ],
-      },
-    },
-  });
-}
-
-/** Solicita GPS con el botón nativo de WhatsApp, no con un enlace externo. */
-export async function sendLocationRequestMessage(
-  phone: string,
-  productName: string,
-): Promise<{ wa_message_id: string }> {
-  return sendGraphMessage(phone, {
-    type: "interactive",
-    interactive: {
-      type: "location_request_message",
-      body: { text: `📍 Tu pedido de ${productName} está registrado. Comparte tu ubicación para coordinar la entrega.` },
-      action: { name: "send_location" },
     },
   });
 }

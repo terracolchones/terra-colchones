@@ -1,5 +1,6 @@
 export type ConversationMode = "AI" | "HUMAN";
 export type MessageRole = "user" | "assistant" | "human";
+export type PublicWebhookStatus = "reachable" | "unreachable" | "not_configured";
 
 export interface ConversationView {
   id: number;
@@ -24,6 +25,7 @@ export interface ConnectionInfo {
   phone: string;
   verifiedName: string;
   quality: string;
+  webhookStatus: PublicWebhookStatus;
 }
 
 export type ConnectionStatus =

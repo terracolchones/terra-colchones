@@ -4,6 +4,12 @@
 > Preparado el **7 de septiembre de 2026** a partir de la carpeta de trabajo y
 > su código fuente. No contiene secretos, mensajes de clientes ni valores de la
 > base de datos.
+>
+> **Actualización 8 de septiembre de 2026:** este documento conserva una
+> fotografía histórica. La landing/checkout de Lounge, sus rutas y su flujo se
+> retiraron; el primer contacto de Ads y WhatsApp ahora abre `/catalogo`.
+> No usar las secciones posteriores sobre `landing.html` como descripción de la
+> implementación actual.
 
 ## 1. Resumen ejecutivo
 

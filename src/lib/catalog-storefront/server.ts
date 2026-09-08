@@ -2,6 +2,8 @@ import "server-only";
 
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { DEFAULT_CATALOG_HOME, DEVELOPMENT_CATALOG_PREVIEW } from "@/lib/catalog-storefront/demo";
+import { normalizeWhatsAppPhone } from "@/lib/catalog-storefront/whatsapp";
+import { getPhoneNumberInfo } from "@/lib/meta/client";
 import type {
   CatalogHomeSettings,
   CatalogImage,
@@ -24,6 +26,35 @@ function configuredValue(name: "SUPABASE_URL" | "SUPABASE_SECRET_KEY"): string {
 
 export function isCatalogConfigured(): boolean {
   return Boolean(process.env.SUPABASE_URL?.trim() && process.env.SUPABASE_SECRET_KEY?.trim());
+}
+
+/**
+ * El catálogo debe abrir el mismo número que usa la Cloud API. La variable
+ * privada solo sirve de respaldo cuando Graph no puede consultarse (por
+ * ejemplo, si el catálogo se despliega sin las credenciales de Meta).
+ */
+function configuredCatalogWhatsAppPhone(): string | null {
+  return normalizeWhatsAppPhone(process.env.TERRA_WHATSAPP_PHONE)
+    ?? normalizeWhatsAppPhone(process.env.NEXT_PUBLIC_TERRA_WHATSAPP_PHONE);
+}
+
+export async function getCatalogWhatsAppPhone(): Promise<string | null> {
+  const fallback = configuredCatalogWhatsAppPhone();
+
+  try {
+    const phone = normalizeWhatsAppPhone((await getPhoneNumberInfo()).display_phone_number);
+    if (!phone) {
+      console.warn("[catalog] Meta no devolvió un número de WhatsApp válido; se usa el respaldo configurado.");
+      return fallback;
+    }
+    if (fallback && fallback !== phone) {
+      console.warn("[catalog] El número configurado no coincide con el número activo de Meta; se usa el de Meta.");
+    }
+    return phone;
+  } catch {
+    console.warn("[catalog] No se pudo consultar el número activo de Meta; se usa el respaldo configurado.");
+    return fallback;
+  }
 }
 
 export function getCatalogServerClient(): SupabaseClient {

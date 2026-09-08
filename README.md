@@ -66,7 +66,7 @@ SUPABASE_SECRET_KEY=sb_secret_...
 SUPABASE_QR_BUCKET=chatbot-qr
 SUPABASE_PAYMENT_QR_PATH=payment-qr.jpeg
 QR_UPLOAD_TOKEN=token-aleatorio-largo-compartido-con-el-generador-qr
-ORDER_CONFIRMATION_TOKEN=otro-token-aleatorio-largo-solo-para-tu-landing
+ORDER_CONFIRMATION_TOKEN=otro-token-aleatorio-largo-para-un-sistema-externo
 ```
 
 - `META_ACCESS_TOKEN` debe ser un **System User Token permanente**. Los tokens de prueba de Meta duran 24 horas y no sirven para producción.
@@ -75,6 +75,7 @@ ORDER_CONFIRMATION_TOKEN=otro-token-aleatorio-largo-solo-para-tu-landing
 - `META_APP_SECRET` está en **App Dashboard → Settings → Basic** y es obligatorio para validar cada webhook.
 - `META_VERIFY_TOKEN` lo eliges tú. Debe coincidir exactamente con el valor configurado en Meta al crear el webhook.
 - `META_GRAPH_VERSION` está en `v25.0`, la versión ofrecida actualmente por el panel de pruebas de Meta. Revisa las versiones admitidas por Meta periódicamente.
+- El catálogo toma el número de compra del número activo que devuelve Meta para `META_PHONE_NUMBER_ID`, para que no se desvíe de un Test Number. `TERRA_WHATSAPP_PHONE` es solo un respaldo opcional si ese diagnóstico no puede consultar Graph; debe contener únicamente dígitos con código de país. La antigua variable `NEXT_PUBLIC_TERRA_WHATSAPP_PHONE` se admite por compatibilidad, pero no se recomienda porque queda incorporada al bundle al compilar.
 - `OPENAI_API_KEY` es la clave de la API oficial de OpenAI; nunca la expongas al navegador ni la subas a Git.
 - `OPENAI_MODEL` por defecto es `gpt-5.6-luna`, adecuado para alto volumen y coste contenido. Puedes establecer `gpt-5.6-terra` si prefieres mayor calidad. Consulta los [modelos de OpenAI](https://developers.openai.com/api/docs/models) para comparar capacidades y precios.
 - `SUPABASE_SECRET_KEY` es una clave secreta de servidor: no la expongas al navegador, no la envíes por chat y no la subas a Git. Es distinta de la clave publicable.
@@ -106,9 +107,9 @@ curl -X POST "$APP_URL/api/qr" \
 
 La respuesta devuelve una URL firmada válida por cinco minutos. Los QR se sobrescriben por sesión, se mantienen privados y no se guardan en el navegador. Al enviar un QR de pago, WhatsApp descarga esa URL temporal directamente desde Supabase; el dashboard solo conserva el registro “QR de pago enviado”.
 
-## Confirmación desde una landing
+## Confirmación desde un sistema externo
 
-La landing debe llamar a esta ruta **desde su servidor**, nunca desde JavaScript del navegador, cuando el pedido cambie a confirmado:
+Un sistema externo puede llamar a esta ruta **desde su servidor**, nunca desde JavaScript del navegador, cuando el pedido cambie a confirmado:
 
 ```bash
 curl -X POST "$CHATBOT_URL/api/order-confirmations" \
@@ -117,7 +118,7 @@ curl -X POST "$CHATBOT_URL/api/order-confirmations" \
   -d '{"orderId":"pedido-123","customerPhone":"59170000000","customerName":"Cliente"}'
 ```
 
-El `orderId` es idempotente: aunque la landing reintente la llamada, el QR no se envía dos veces. El número debe incluir el código de país y solo dígitos. WhatsApp solo permite mensajes de pago libres dentro de la ventana de 24 horas desde el último mensaje del cliente; fuera de ella se devuelve un error para que la landing pueda pedir intervención del operador.
+El `orderId` es idempotente: aunque el sistema externo reintente la llamada, el QR no se envía dos veces. El número debe incluir el código de país y solo dígitos. WhatsApp solo permite mensajes de pago libres dentro de la ventana de 24 horas desde el último mensaje del cliente; fuera de ella se devuelve un error para que el sistema pueda pedir intervención del operador.
 
 ## Configuración de Meta
 
@@ -127,6 +128,8 @@ El `orderId` es idempotente: aunque la landing reintente la llamada, el QR no se
 4. Desde Business Settings genera un **System User Token** permanente con los permisos necesarios para WhatsApp y cópialo como `META_ACCESS_TOKEN`.
 5. En WhatsApp → Configuration, registra la URL `https://TU_DOMINIO/api/webhook` y el mismo valor de `META_VERIFY_TOKEN`.
 6. Suscribe el webhook al campo `messages`.
+
+El dashboard también comprueba que `PUBLIC_APP_URL/api/webhook` sea alcanzable públicamente, sin enviar el `META_VERIFY_TOKEN` real. Si aparece una alerta de webhook, crea o recupera un dominio HTTPS activo, actualiza `PUBLIC_APP_URL` y registra la misma URL en Meta antes de probar mensajes entrantes.
 
 La verificación inicial de Meta usa:
 
@@ -141,6 +144,7 @@ La aplicación devuelve el `hub.challenge` como `text/plain`, tal como exige Met
 - `POST /api/webhook` valida `X-Hub-Signature-256` mediante HMAC SHA-256 calculado sobre el body crudo.
 - Responde `200` inmediatamente para evitar reintentos por timeout de Meta y procesa el evento de forma asíncrona.
 - Cada mensaje se deduplica por su `wa_message_id` antes de llamar a OpenAI o responder a WhatsApp.
+- Los primeros mensajes, saludos y solicitudes de compra reciben un CTA al catálogo público `/catalogo`; no existe checkout web heredado.
 - Todos los datos locales se guardan en `data/messages.db` con SQLite y modo WAL.
 - En modo **IA**, se envían los últimos 20 mensajes a la [Responses API](https://developers.openai.com/api/reference/responses/create) con el prompt de `src/lib/system-prompt.ts`. Las respuestas se solicitan con `store: false`.
 - En modo **HUMANO**, el dashboard envía el texto directamente a Graph API y conserva un mensaje con icono de error si el envío falla.

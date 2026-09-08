@@ -1,9 +1,12 @@
 # Regreso con WhatsApp Personal y Business
 
-**Estado:** PENDIENTE  
+**Estado:** RETIRADO — el checkout/landing fue eliminado el 8 de septiembre de 2026.
 **Fecha:** 2026-09-07
 
 ## Objetivo
+
+> Este plan se conserva únicamente como historial. Ya no debe implementarse:
+> el flujo actual lleva a los clientes al catálogo `/catalogo`.
 
 Evitar que un cliente que empezó el pedido en una edición de WhatsApp vuelva a
 la otra edición cuando tiene WhatsApp Messenger y WhatsApp Business instalados

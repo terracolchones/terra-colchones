@@ -32,12 +32,10 @@ function ProductCard({ product }: { product: CatalogProduct }) {
       <div className="flex flex-1 flex-col p-3.5">
         <p className="text-[11px] font-bold uppercase tracking-[0.11em] text-[#9a2022]">{product.category}</p>
         <h2 className="mt-1.5 line-clamp-2 text-[15px] font-semibold leading-5 text-stone-900">{product.name}</h2>
-        <div className="mt-2 flex items-end justify-between gap-2">
+        <div className="mt-1">
           <div>
-            <span className="block text-[11px] text-stone-500">{product.priceFrom === null ? "" : "Desde"}</span>
             <span className="text-[15px] font-extrabold text-stone-950">{formatBolivianos(product.priceFrom)}</span>
           </div>
-          <span className="grid size-8 shrink-0 place-items-center rounded-full bg-stone-900 text-lg text-white transition group-hover:bg-[#9a2022]" aria-hidden="true">→</span>
         </div>
       </div>
     </Link>

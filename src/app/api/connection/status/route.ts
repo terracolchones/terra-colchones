@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getPhoneNumberInfo, isExpiredMetaAccessToken } from "@/lib/meta/client";
+import type { PublicWebhookStatus } from "@/components/types";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -14,6 +15,39 @@ const REQUIRED_ENV = [
 
 const noStore = { "Cache-Control": "no-store" };
 
+function publicWebhookUrl(): URL | null {
+  const base = process.env.PUBLIC_APP_URL?.trim();
+  if (!base) return null;
+
+  try {
+    const url = new URL("/api/webhook", base);
+    if (url.protocol !== "https:") return null;
+    url.searchParams.set("hub.mode", "subscribe");
+    // Nunca enviamos el verify token real en este diagnóstico público.
+    url.searchParams.set("hub.verify_token", "healthcheck-invalid-token");
+    url.searchParams.set("hub.challenge", "healthcheck");
+    return url;
+  } catch {
+    return null;
+  }
+}
+
+async function publicWebhookStatus(): Promise<PublicWebhookStatus> {
+  const url = publicWebhookUrl();
+  if (!url) return "not_configured";
+
+  try {
+    const response = await fetch(url, {
+      cache: "no-store",
+      redirect: "manual",
+      signal: AbortSignal.timeout(5_000),
+    });
+    return response.status === 403 && (await response.text()) === "forbidden" ? "reachable" : "unreachable";
+  } catch {
+    return "unreachable";
+  }
+}
+
 export async function GET() {
   const missing = REQUIRED_ENV.filter((key) => !process.env[key]?.trim());
   if (missing.length > 0) {
@@ -27,13 +61,14 @@ export async function GET() {
   }
 
   try {
-    const info = await getPhoneNumberInfo();
+    const [info, webhookStatus] = await Promise.all([getPhoneNumberInfo(), publicWebhookStatus()]);
     return NextResponse.json(
       {
         status: "connected",
         phone: info.display_phone_number,
         verifiedName: info.verified_name,
         quality: info.quality_rating,
+        webhookStatus,
       },
       { headers: noStore },
     );

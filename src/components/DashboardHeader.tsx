@@ -30,6 +30,12 @@ export function DashboardHeader({ info, onTestConnection }: DashboardHeaderProps
             {info.phone} · {info.verifiedName || "Número verificado"}
             {info.quality ? ` · Calidad: ${info.quality}` : ""}
           </p>
+          {info.webhookStatus === "unreachable" && (
+            <p className="mt-1 text-xs font-medium text-amber-700" role="status">⚠ El webhook público no responde; los mensajes entrantes no llegarán.</p>
+          )}
+          {info.webhookStatus === "not_configured" && (
+            <p className="mt-1 text-xs font-medium text-amber-700" role="status">⚠ Falta configurar una URL HTTPS pública para recibir mensajes.</p>
+          )}
         </div>
       </div>
       <button
