@@ -23,9 +23,25 @@ function asArray(value: unknown): unknown[] {
   return Array.isArray(value) ? value : [];
 }
 
-function publicBaseUrl(origin?: string): string | null {
-  const candidate = (process.env.PUBLIC_APP_URL || origin || "").replace(/\/$/, "");
+function httpsBaseUrl(value: string | undefined): string | null {
+  const candidate = (value || "").trim().replace(/\/$/, "");
   return candidate.startsWith("https://") ? candidate : null;
+}
+
+function publicBaseUrl(origin?: string): string | null {
+  return httpsBaseUrl(process.env.PUBLIC_APP_URL || origin);
+}
+
+/**
+ * Permite alojar el agente y el catálogo en dominios distintos. Si no se
+ * configura, conserva el destino histórico dentro de la misma aplicación.
+ */
+function catalogPublicUrl(origin?: string): string | null {
+  const configuredCatalogUrl = httpsBaseUrl(process.env.CATALOG_PUBLIC_URL);
+  if (configuredCatalogUrl) return configuredCatalogUrl;
+
+  const agentBaseUrl = publicBaseUrl(origin);
+  return agentBaseUrl ? agentBaseUrl + "/catalogo" : null;
 }
 
 function isProductIntent(content: string): boolean {
@@ -65,17 +81,16 @@ async function sendCatalog(
   phone: string,
   origin?: string,
 ): Promise<void> {
-  const baseUrl = publicBaseUrl(origin);
-  if (!baseUrl) {
+  const catalogUrl = catalogPublicUrl(origin);
+  if (!catalogUrl) {
     await sendAndStore(
       conversation,
       phone,
-      "No pudimos abrir el catálogo porque falta configurar la URL pública segura de Terra.",
+      "No pudimos abrir el catálogo porque falta configurar la URL pública segura del catálogo de Terra.",
     );
     return;
   }
 
-  const catalogUrl = baseUrl + "/catalogo";
   const localId = insertMessage(conversation.id, "assistant", "Catálogo enviado.");
   try {
     const { wa_message_id } = await sendCatalogCtaMessage(phone, catalogUrl);

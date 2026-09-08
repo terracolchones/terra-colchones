@@ -55,6 +55,10 @@ META_WABA_ID=1234567890
 META_APP_SECRET=abcdef...
 META_VERIFY_TOKEN=elige-un-token-aleatorio
 META_GRAPH_VERSION=v25.0
+# URL HTTPS del agente (dashboard y /api/webhook)
+PUBLIC_APP_URL=https://agente.tu-dominio.example
+# URL HTTPS canónica del catálogo que se envía a clientes
+CATALOG_PUBLIC_URL=https://tu-dominio.example
 
 # OpenAI API oficial
 OPENAI_API_KEY=sk-...
@@ -75,6 +79,8 @@ ORDER_CONFIRMATION_TOKEN=otro-token-aleatorio-largo-para-un-sistema-externo
 - `META_APP_SECRET` está en **App Dashboard → Settings → Basic** y es obligatorio para validar cada webhook.
 - `META_VERIFY_TOKEN` lo eliges tú. Debe coincidir exactamente con el valor configurado en Meta al crear el webhook.
 - `META_GRAPH_VERSION` está en `v25.0`, la versión ofrecida actualmente por el panel de pruebas de Meta. Revisa las versiones admitidas por Meta periódicamente.
+- `PUBLIC_APP_URL` es la URL HTTPS permanente del agente; Meta debe usar `${PUBLIC_APP_URL}/api/webhook` como callback.
+- `CATALOG_PUBLIC_URL` permite que el agente envíe el catálogo público aunque esté alojado en un dominio distinto. Si se omite, se conserva el destino histórico `${PUBLIC_APP_URL}/catalogo`.
 - El catálogo toma el número de compra del número activo que devuelve Meta para `META_PHONE_NUMBER_ID`, para que no se desvíe de un Test Number. `TERRA_WHATSAPP_PHONE` es solo un respaldo opcional si ese diagnóstico no puede consultar Graph; debe contener únicamente dígitos con código de país. La antigua variable `NEXT_PUBLIC_TERRA_WHATSAPP_PHONE` se admite por compatibilidad, pero no se recomienda porque queda incorporada al bundle al compilar.
 - `OPENAI_API_KEY` es la clave de la API oficial de OpenAI; nunca la expongas al navegador ni la subas a Git.
 - `OPENAI_MODEL` por defecto es `gpt-5.6-luna`, adecuado para alto volumen y coste contenido. Puedes establecer `gpt-5.6-terra` si prefieres mayor calidad. Consulta los [modelos de OpenAI](https://developers.openai.com/api/docs/models) para comparar capacidades y precios.
@@ -129,7 +135,7 @@ El `orderId` es idempotente: aunque el sistema externo reintente la llamada, el 
 5. En WhatsApp → Configuration, registra la URL `https://TU_DOMINIO/api/webhook` y el mismo valor de `META_VERIFY_TOKEN`.
 6. Suscribe el webhook al campo `messages`.
 
-El dashboard también comprueba que `PUBLIC_APP_URL/api/webhook` sea alcanzable públicamente, sin enviar el `META_VERIFY_TOKEN` real. Si aparece una alerta de webhook, crea o recupera un dominio HTTPS activo, actualiza `PUBLIC_APP_URL` y registra la misma URL en Meta antes de probar mensajes entrantes.
+El dashboard también comprueba que `PUBLIC_APP_URL/api/webhook` sea alcanzable públicamente, sin enviar el `META_VERIFY_TOKEN` real. Si aparece una alerta de webhook, crea o recupera un dominio HTTPS activo, actualiza `PUBLIC_APP_URL` y registra la misma URL en Meta antes de probar mensajes entrantes. Si el catálogo vive en otro dominio, configura también `CATALOG_PUBLIC_URL`.
 
 La verificación inicial de Meta usa:
 
@@ -144,7 +150,7 @@ La aplicación devuelve el `hub.challenge` como `text/plain`, tal como exige Met
 - `POST /api/webhook` valida `X-Hub-Signature-256` mediante HMAC SHA-256 calculado sobre el body crudo.
 - Responde `200` inmediatamente para evitar reintentos por timeout de Meta y procesa el evento de forma asíncrona.
 - Cada mensaje se deduplica por su `wa_message_id` antes de llamar a OpenAI o responder a WhatsApp.
-- Los primeros mensajes, saludos y solicitudes de compra reciben un CTA al catálogo público `/catalogo`; no existe checkout web heredado.
+- Los primeros mensajes, saludos y solicitudes de compra reciben un CTA a `CATALOG_PUBLIC_URL` o, por compatibilidad, a `/catalogo` dentro de `PUBLIC_APP_URL`; no existe checkout web heredado.
 - Todos los datos locales se guardan en `data/messages.db` con SQLite y modo WAL.
 - En modo **IA**, se envían los últimos 20 mensajes a la [Responses API](https://developers.openai.com/api/reference/responses/create) con el prompt de `src/lib/system-prompt.ts`. Las respuestas se solicitan con `store: false`.
 - En modo **HUMANO**, el dashboard envía el texto directamente a Graph API y conserva un mensaje con icono de error si el envío falla.
