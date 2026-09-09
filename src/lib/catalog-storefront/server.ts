@@ -178,6 +178,21 @@ export async function getCatalogSnapshot(): Promise<CatalogSnapshot> {
   }
 }
 
+/**
+ * Fuente de RAG: nunca devuelve los datos demo usados únicamente para la UI de
+ * desarrollo. Si Supabase no está disponible, el agente debe derivar en vez de
+ * presentar información comercial inventada.
+ */
+export async function getPublishedCatalogProductsForRag(): Promise<CatalogProduct[]> {
+  if (!isCatalogConfigured()) return [];
+  try {
+    return await queryProducts(true);
+  } catch (error) {
+    console.error("[catalog] no se pudo leer el catálogo para RAG:", error);
+    return [];
+  }
+}
+
 export async function getPublishedProductBySlug(slug: string): Promise<CatalogProduct | null> {
   if (!isCatalogConfigured()) {
     return process.env.NODE_ENV === "production" ? null : DEVELOPMENT_CATALOG_PREVIEW.find((product) => product.slug === slug) ?? null;

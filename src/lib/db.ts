@@ -27,6 +27,11 @@ export interface Message {
   created_at: number;
 }
 
+export interface CatalogLeadContext {
+  productId: string;
+  variantId: string | null;
+}
+
 type PaymentQrDeliveryStatus = "sending" | "sent" | "failed";
 
 const dataDirectory = path.join(process.cwd(), "data");
@@ -78,6 +83,13 @@ function getDatabase(): Database.Database {
   CREATE TABLE IF NOT EXISTS processed_webhook_messages (
     wa_message_id TEXT PRIMARY KEY,
     processed_at INTEGER NOT NULL DEFAULT (unixepoch())
+  );
+
+  CREATE TABLE IF NOT EXISTS conversation_catalog_context (
+    conversation_id INTEGER PRIMARY KEY REFERENCES conversations(id) ON DELETE CASCADE,
+    product_id TEXT NOT NULL,
+    variant_id TEXT,
+    updated_at INTEGER NOT NULL DEFAULT (unixepoch())
   );
 
   CREATE TABLE IF NOT EXISTS payment_qr_deliveries (
@@ -234,6 +246,32 @@ export function getRecentHistory(conversationId: number, limit = 20): Message[] 
     )
     .all(asPositiveId(conversationId), safeLimit) as Message[];
   return recent.reverse();
+}
+
+/** Guarda el último producto abierto desde el catálogo para conservar contexto RAG. */
+export function setCatalogLeadContext(
+  conversationId: number,
+  productId: string,
+  variantId: string | null,
+): void {
+  if (!productId.trim()) throw new Error("El producto del catálogo no es válido");
+  const db = getDatabase();
+  db.prepare(
+    `INSERT INTO conversation_catalog_context (conversation_id, product_id, variant_id)
+     VALUES (?, ?, ?)
+     ON CONFLICT(conversation_id) DO UPDATE SET
+       product_id = excluded.product_id,
+       variant_id = excluded.variant_id,
+       updated_at = unixepoch()`,
+  ).run(asPositiveId(conversationId), productId, variantId);
+}
+
+export function getCatalogLeadContext(conversationId: number): CatalogLeadContext | null {
+  const db = getDatabase();
+  const row = db
+    .prepare("SELECT product_id, variant_id FROM conversation_catalog_context WHERE conversation_id = ?")
+    .get(asPositiveId(conversationId)) as { product_id: string; variant_id: string | null } | undefined;
+  return row ? { productId: row.product_id, variantId: row.variant_id } : null;
 }
 
 export function setMode(conversationId: number, mode: ConversationMode): Conversation | undefined {
