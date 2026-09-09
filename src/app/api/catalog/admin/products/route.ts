@@ -1,14 +1,10 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createCatalogProduct, jsonError, listCatalogForAdmin, parseProductInput, requireCatalogAdmin } from "@/lib/catalog-storefront/admin-server";
-import { requireDashboardAuth } from "@/lib/dashboard-auth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function GET(request: NextRequest) {
-  const blocked = requireDashboardAuth(request);
-  if (blocked) return blocked;
-
   try {
     await requireCatalogAdmin(request);
     return NextResponse.json({ products: await listCatalogForAdmin() });
@@ -18,9 +14,6 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  const blocked = requireDashboardAuth(request);
-  if (blocked) return blocked;
-
   try {
     await requireCatalogAdmin(request);
     const productId = await createCatalogProduct(parseProductInput(await request.json()));

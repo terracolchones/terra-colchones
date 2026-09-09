@@ -6,7 +6,6 @@ import {
   updateMessageWaId,
 } from "@/lib/db";
 import { sendTextMessage } from "@/lib/meta/client";
-import { requireDashboardAuth } from "@/lib/dashboard-auth";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -20,10 +19,7 @@ function parseId(value: string): number | null {
   return Number.isInteger(id) && id > 0 ? id : null;
 }
 
-export async function GET(request: NextRequest, { params }: Context) {
-  const blocked = requireDashboardAuth(request);
-  if (blocked) return blocked;
-
+export async function GET(_request: NextRequest, { params }: Context) {
   const id = parseId((await params).conversationId);
   if (!id) return NextResponse.json({ error: "id inválido" }, { status: 400 });
 
@@ -36,9 +32,6 @@ export async function GET(request: NextRequest, { params }: Context) {
 }
 
 export async function POST(request: NextRequest, { params }: Context) {
-  const blocked = requireDashboardAuth(request);
-  if (blocked) return blocked;
-
   const id = parseId((await params).conversationId);
   if (!id) return NextResponse.json({ error: "id inválido" }, { status: 400 });
 
