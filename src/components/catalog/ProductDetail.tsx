@@ -177,7 +177,7 @@ export function ProductDetail({ product, whatsAppPhone }: ProductDetailProps) {
           </div>
           {whatsAppUrl ? (
             orderReadyToConfirm ? (
-              <a href={whatsAppUrl} target="_blank" rel="noreferrer" className="inline-flex min-h-11 shrink-0 items-center justify-center rounded-xl bg-red-600 px-4 text-sm font-bold text-white shadow-lg shadow-red-600/20 transition hover:bg-red-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-600 sm:min-h-12 sm:px-5">
+              <a href={whatsAppUrl} target="_blank" rel="noreferrer" className="inline-flex min-h-11 shrink-0 items-center justify-center rounded-xl bg-[#148a4a] px-4 text-sm font-bold text-white shadow-lg shadow-[#148a4a]/20 transition hover:bg-[#0f743d] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#148a4a] sm:min-h-12 sm:px-5">
                 Confirmar pedido
               </a>
             ) : (
