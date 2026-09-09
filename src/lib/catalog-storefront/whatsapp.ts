@@ -14,9 +14,20 @@ export function buildCatalogWhatsAppUrl(
   phone: string | null,
 ): string | null {
   if (!phone) return null;
-  const variantLine = variant ? ` Variante: ${variant.label}.` : "";
   const variantContext = variant?.id ?? "base";
-  const message = `Hola Terra, quiero consultar ${product.name}.${variantLine} [TERRA-CAT:${product.id}:${variantContext}]`;
+  const specifications = product.specifications
+    .map((specification) => specification.trim())
+    .filter(Boolean)
+    .map((specification) => `- ${specification}`);
+  const message = [
+    `Producto: ${product.name}`,
+    variant ? `Opción seleccionada: ${variant.label}` : null,
+    specifications.length > 0 ? "Detalles:" : null,
+    ...specifications,
+    `[TERRA-CAT:${product.id}:${variantContext}]`,
+  ]
+    .filter((line): line is string => line !== null)
+    .join("\n");
   return `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
 }
 

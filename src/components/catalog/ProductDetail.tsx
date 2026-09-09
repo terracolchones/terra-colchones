@@ -41,6 +41,7 @@ export function ProductDetail({ product, whatsAppPhone }: ProductDetailProps) {
   const activeVariants = useMemo(() => product.variants.filter((variant) => variant.active), [product.variants]);
   const [selectedVariantId, setSelectedVariantId] = useState(activeVariants[0]?.id ?? null);
   const [activeImage, setActiveImage] = useState(0);
+  const [orderReadyToConfirm, setOrderReadyToConfirm] = useState(false);
   const selectedVariant = activeVariants.find((variant) => variant.id === selectedVariantId) ?? null;
   const price = selectedVariant?.price ?? product.priceFrom;
   const compareAtPrice = selectedVariant?.compareAtPrice ?? product.compareAtPriceFrom;
@@ -86,7 +87,10 @@ export function ProductDetail({ product, whatsAppPhone }: ProductDetailProps) {
                         aria-label={variant.label}
                         aria-pressed={selected}
                         title={variant.label}
-                        onClick={() => setSelectedVariantId(variant.id)}
+                        onClick={() => {
+                          setSelectedVariantId(variant.id);
+                          setOrderReadyToConfirm(false);
+                        }}
                         className={`grid size-10 place-items-center rounded-full border transition focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#8f1519] ${selected ? "border-stone-950 bg-white" : "border-transparent bg-stone-100 hover:border-stone-300"}`}
                       >
                         <span className="size-7 rounded-full border border-stone-300/60" style={{ backgroundColor: variantColors[index] ?? undefined }} aria-hidden="true" />
@@ -103,7 +107,10 @@ export function ProductDetail({ product, whatsAppPhone }: ProductDetailProps) {
                         key={variant.id}
                         type="button"
                         aria-pressed={selected}
-                        onClick={() => setSelectedVariantId(variant.id)}
+                        onClick={() => {
+                          setSelectedVariantId(variant.id);
+                          setOrderReadyToConfirm(false);
+                        }}
                         className={`inline-flex min-h-9 items-center rounded-full border px-3 text-sm font-semibold transition focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#8f1519] ${selected ? "border-stone-950 bg-stone-950 text-white" : "border-stone-200 bg-white text-stone-800 hover:border-stone-400"}`}
                       >
                         {variant.label}
@@ -169,9 +176,15 @@ export function ProductDetail({ product, whatsAppPhone }: ProductDetailProps) {
             <p className="truncate text-xs font-semibold text-stone-900 sm:text-sm">{selectedVariant?.label ?? product.name}</p>
           </div>
           {whatsAppUrl ? (
-            <a href={whatsAppUrl} target="_blank" rel="noreferrer" className="inline-flex min-h-11 shrink-0 items-center justify-center rounded-xl bg-[#148a4a] px-4 text-sm font-bold text-white shadow-lg shadow-[#148a4a]/20 transition hover:bg-[#0f743d] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#148a4a] sm:min-h-12 sm:px-5">
-              Comprar
-            </a>
+            orderReadyToConfirm ? (
+              <a href={whatsAppUrl} target="_blank" rel="noreferrer" className="inline-flex min-h-11 shrink-0 items-center justify-center rounded-xl bg-red-600 px-4 text-sm font-bold text-white shadow-lg shadow-red-600/20 transition hover:bg-red-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-600 sm:min-h-12 sm:px-5">
+                Confirmar pedido
+              </a>
+            ) : (
+              <button type="button" onClick={() => setOrderReadyToConfirm(true)} className="inline-flex min-h-11 shrink-0 items-center justify-center rounded-xl bg-red-600 px-4 text-sm font-bold text-white shadow-lg shadow-red-600/20 transition hover:bg-red-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-600 sm:min-h-12 sm:px-5">
+                Comprar
+              </button>
+            )
           ) : (
             <button type="button" disabled title="No hay un número de WhatsApp configurado" className="inline-flex min-h-11 shrink-0 items-center justify-center rounded-xl bg-stone-300 px-4 text-sm font-bold text-stone-600 sm:min-h-12 sm:px-5">
               WhatsApp no disponible
