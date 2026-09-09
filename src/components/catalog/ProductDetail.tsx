@@ -15,6 +15,28 @@ interface ProductDetailProps {
   whatsAppPhone: string | null;
 }
 
+const COLOR_SWATCHES: Array<{ names: string[]; value: string }> = [
+  { names: ["blanco", "white"], value: "#f8fafc" },
+  { names: ["negro", "black"], value: "#1c1917" },
+  { names: ["gris", "plomo", "gray", "grey"], value: "#9ca3af" },
+  { names: ["beige", "crema", "cream"], value: "#d6b983" },
+  { names: ["marron", "cafe", "chocolate", "tabaco", "brown"], value: "#75452f" },
+  { names: ["rojo", "vino", "bordo", "red"], value: "#9a2022" },
+  { names: ["azul", "blue"], value: "#3269a8" },
+  { names: ["verde", "green"], value: "#3f7d4e" },
+  { names: ["amarillo", "yellow"], value: "#d4a017" },
+  { names: ["naranja", "orange"], value: "#dc7623" },
+  { names: ["rosa", "pink"], value: "#db6d94" },
+];
+
+function colorForVariantLabel(label: string): string | null {
+  const normalized = label
+    .normalize("NFD")
+    .replace(/\p{Diacritic}/gu, "")
+    .toLocaleLowerCase("es");
+  return COLOR_SWATCHES.find(({ names }) => names.some((name) => new RegExp(`(^|\\s)${name}(\\s|$)`).test(normalized)))?.value ?? null;
+}
+
 export function ProductDetail({ product, whatsAppPhone }: ProductDetailProps) {
   const activeVariants = useMemo(() => product.variants.filter((variant) => variant.active), [product.variants]);
   const [selectedVariantId, setSelectedVariantId] = useState(activeVariants[0]?.id ?? null);
@@ -25,6 +47,8 @@ export function ProductDetail({ product, whatsAppPhone }: ProductDetailProps) {
   const currentAvailability = selectedVariant?.availability ?? product.availability;
   const activeImageUrl = product.images[activeImage]?.url ?? product.images[0]?.url ?? null;
   const whatsAppUrl = buildCatalogWhatsAppUrl(product, selectedVariant, whatsAppPhone);
+  const variantColors = activeVariants.map((variant) => colorForVariantLabel(variant.label));
+  const hasOnlyColorVariants = activeVariants.length > 0 && variantColors.every((color) => color !== null);
 
   return (
     <main className="min-h-dvh bg-white pb-24 text-stone-900">
@@ -43,6 +67,53 @@ export function ProductDetail({ product, whatsAppPhone }: ProductDetailProps) {
             <p className="text-xl font-extrabold tracking-tight text-stone-950 sm:text-2xl">{formatBolivianos(price)}</p>
             {compareAtPrice !== null && compareAtPrice > (price ?? 0) && <p className="pb-1 text-sm text-stone-400 line-through">{formatBolivianos(compareAtPrice)}</p>}
           </div>
+
+          {activeVariants.length > 0 && (
+            <section className="mt-5 border-t border-stone-200 pt-5" aria-labelledby="variante-heading">
+              <div className="flex items-baseline justify-between gap-4">
+                <h2 id="variante-heading" className="text-sm font-bold text-stone-950">{hasOnlyColorVariants ? "Elige un color" : "Elige una opción"}</h2>
+                {selectedVariant && <span className="truncate text-xs text-stone-500">{selectedVariant.label}</span>}
+              </div>
+
+              {hasOnlyColorVariants ? (
+                <div className="mt-3 flex flex-wrap gap-2.5" role="group" aria-label="Colores disponibles">
+                  {activeVariants.map((variant, index) => {
+                    const selected = selectedVariantId === variant.id;
+                    return (
+                      <button
+                        key={variant.id}
+                        type="button"
+                        aria-label={variant.label}
+                        aria-pressed={selected}
+                        title={variant.label}
+                        onClick={() => setSelectedVariantId(variant.id)}
+                        className={`grid size-10 place-items-center rounded-full border transition focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#8f1519] ${selected ? "border-stone-950 bg-white" : "border-transparent bg-stone-100 hover:border-stone-300"}`}
+                      >
+                        <span className="size-7 rounded-full border border-stone-300/60" style={{ backgroundColor: variantColors[index] ?? undefined }} aria-hidden="true" />
+                      </button>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {activeVariants.map((variant) => {
+                    const selected = selectedVariantId === variant.id;
+                    return (
+                      <button
+                        key={variant.id}
+                        type="button"
+                        aria-pressed={selected}
+                        onClick={() => setSelectedVariantId(variant.id)}
+                        className={`inline-flex min-h-9 items-center rounded-full border px-3 text-sm font-semibold transition focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#8f1519] ${selected ? "border-stone-950 bg-stone-950 text-white" : "border-stone-200 bg-white text-stone-800 hover:border-stone-400"}`}
+                      >
+                        {variant.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </section>
+          )}
         </section>
 
         <article className="mx-5 mt-8 border-t border-stone-200 pb-6 pt-6 sm:mx-0 sm:mt-7 sm:px-5">
@@ -68,32 +139,6 @@ export function ProductDetail({ product, whatsAppPhone }: ProductDetailProps) {
           </div>
 
           {product.shortDescription && <p className="mt-4 text-[15px] leading-6 text-stone-600 sm:mt-5">{product.shortDescription}</p>}
-
-          {activeVariants.length > 0 && (
-            <section className="mt-7 border-t border-stone-200 pt-6" aria-labelledby="variante-heading">
-              <div className="flex items-baseline justify-between gap-4">
-                <h2 id="variante-heading" className="text-sm font-bold text-stone-950">Elige una opción</h2>
-                {selectedVariant && <span className="text-xs text-stone-500">{selectedVariant.label}</span>}
-              </div>
-              <div className="mt-3 grid grid-cols-2 gap-2">
-                {activeVariants.map((variant) => {
-                  const selected = selectedVariantId === variant.id;
-                  return (
-                    <button
-                      key={variant.id}
-                      type="button"
-                      aria-pressed={selected}
-                      onClick={() => setSelectedVariantId(variant.id)}
-                      className={`min-h-14 rounded-xl border px-3 text-left transition focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#8f1519] ${selected ? "border-stone-950 bg-stone-950 text-white" : "border-stone-200 bg-white text-stone-800 hover:border-stone-400"}`}
-                    >
-                      <span className="block text-sm font-semibold">{variant.label}</span>
-                      {variant.price !== null && <span className={`mt-0.5 block text-xs ${selected ? "text-white/70" : "text-stone-500"}`}>{formatBolivianos(variant.price)}</span>}
-                    </button>
-                  );
-                })}
-              </div>
-            </section>
-          )}
 
           {product.description && (
             <section className="mt-7 border-t border-stone-200 pt-6">

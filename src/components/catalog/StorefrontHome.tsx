@@ -5,7 +5,7 @@
 
 import Link from "next/link";
 import { useMemo, useState } from "react";
-import { availabilityLabel, formatBolivianos } from "@/components/catalog/price";
+import { availabilityLabel } from "@/components/catalog/price";
 import { ProductVisual } from "@/components/catalog/ProductVisual";
 import type { CatalogHomeSettings, CatalogProduct } from "@/lib/catalog-storefront/types";
 
@@ -21,7 +21,7 @@ function ProductCard({ product }: { product: CatalogProduct }) {
       href={`/catalogo/productos/${encodeURIComponent(product.slug)}`}
       className="group flex min-w-0 flex-col overflow-hidden rounded-[1.35rem] border border-stone-200 bg-white shadow-[0_10px_26px_rgba(30,20,12,0.06)] transition hover:-translate-y-0.5 hover:shadow-[0_16px_30px_rgba(30,20,12,0.1)] focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[#8f1519]"
     >
-      <div className="relative aspect-square overflow-hidden bg-stone-100">
+      <div className="relative aspect-[4/5] overflow-hidden bg-stone-100">
         <ProductVisual product={product} imageUrl={image} compact />
         {product.availability !== "available" && (
           <span className="absolute left-2 top-2 rounded-full bg-white/90 px-2 py-1 text-[10px] font-bold text-stone-700 shadow-sm backdrop-blur">
@@ -32,11 +32,6 @@ function ProductCard({ product }: { product: CatalogProduct }) {
       <div className="flex flex-1 flex-col p-3.5">
         <p className="text-[11px] font-bold uppercase tracking-[0.11em] text-[#9a2022]">{product.category}</p>
         <h2 className="mt-1.5 line-clamp-2 text-[15px] font-semibold leading-5 text-stone-900">{product.name}</h2>
-        <div className="mt-1">
-          <div>
-            <span className="text-[15px] font-extrabold text-stone-950">{formatBolivianos(product.priceFrom)}</span>
-          </div>
-        </div>
       </div>
     </Link>
   );
