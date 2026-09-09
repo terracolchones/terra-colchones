@@ -32,10 +32,11 @@ El catálogo se despliega desde `main`. El agente se despliega desde
 Bienvenida Terra → Ver catálogo → producto y variante → Confirmar pedido
 
 Llegada desde WhatsApp:
-  enlace privado al catálogo → pedido vinculado al mismo chat → Volver a WhatsApp
+  enlace privado al catálogo → pedido vinculado al mismo chat → Confirmar pedido abre WhatsApp
 
 Llegada directa al catálogo:
-  pedido pendiente → WhatsApp: “Hola Terra, confirmo mi pedido #T-7Q4K-8M2P”
+  Confirmar pedido crea el pedido y abre WhatsApp directamente con:
+  “Hola Terra, confirmo mi pedido #T-7Q4K-8M2P”
 
 Agente:
   GPS nativo → ubicación → QR de pago → comprobante → en revisión
@@ -77,6 +78,8 @@ Antes del siguiente desarrollo se crearon estos puntos Git locales:
 | --- | --- | --- |
 | Catálogo | `codex/safety-before-order-flow-catalog-3a846b4` | `3a846b4` |
 | Agente | `codex/safety-before-order-flow-agent-c5a0672` | `c5a0672` |
+| Catálogo | `codex/safety-before-qr-recovery-catalog-e1083cd` | `e1083cd` |
+| Agente | `codex/safety-before-qr-recovery-agent-99a8441` | `99a8441` |
 
 Las ramas de trabajo son `codex/order-flow-catalog` y
 `codex/order-flow-agent`. Los cambios locales no confirmados ajenos a esta tarea

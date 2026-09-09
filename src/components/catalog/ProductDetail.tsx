@@ -43,7 +43,6 @@ export function ProductDetail({ product, whatsAppPhone, checkoutToken }: Product
   const [selectedVariantId, setSelectedVariantId] = useState(activeVariants[0]?.id ?? null);
   const [activeImage, setActiveImage] = useState(0);
   const [orderReadyToConfirm, setOrderReadyToConfirm] = useState(false);
-  const [orderCode, setOrderCode] = useState<string | null>(null);
   const [confirmingOrder, setConfirmingOrder] = useState(false);
   const [orderError, setOrderError] = useState<string | null>(null);
   const selectedVariant = activeVariants.find((variant) => variant.id === selectedVariantId) ?? null;
@@ -51,7 +50,6 @@ export function ProductDetail({ product, whatsAppPhone, checkoutToken }: Product
   const compareAtPrice = selectedVariant?.compareAtPrice ?? product.compareAtPriceFrom;
   const currentAvailability = selectedVariant?.availability ?? product.availability;
   const activeImageUrl = product.images[activeImage]?.url ?? product.images[0]?.url ?? null;
-  const whatsAppUrl = orderCode ? buildOrderConfirmationWhatsAppUrl(orderCode, whatsAppPhone) : null;
   const variantColors = activeVariants.map((variant) => colorForVariantLabel(variant.label));
   const hasOnlyColorVariants = activeVariants.length > 0 && variantColors.every((color) => color !== null);
 
@@ -73,7 +71,11 @@ export function ProductDetail({ product, whatsAppPhone, checkoutToken }: Product
       if (!response.ok || typeof data.orderCode !== "string") {
         throw new Error(typeof data.error === "string" ? data.error : "No pudimos crear el pedido. Inténtalo nuevamente.");
       }
-      setOrderCode(data.orderCode);
+      const whatsAppUrl = buildOrderConfirmationWhatsAppUrl(data.orderCode, whatsAppPhone);
+      if (!whatsAppUrl) {
+        throw new Error("No pudimos abrir WhatsApp. Inténtalo nuevamente.");
+      }
+      window.location.assign(whatsAppUrl);
     } catch (error) {
       setOrderError(error instanceof Error ? error.message : "No pudimos crear el pedido. Inténtalo nuevamente.");
     } finally {
@@ -83,7 +85,6 @@ export function ProductDetail({ product, whatsAppPhone, checkoutToken }: Product
 
   function resetOrderConfirmation(): void {
     setOrderReadyToConfirm(false);
-    setOrderCode(null);
     setOrderError(null);
   }
 
@@ -213,15 +214,9 @@ export function ProductDetail({ product, whatsAppPhone, checkoutToken }: Product
           </div>
           {whatsAppPhone ? (
             orderReadyToConfirm ? (
-              whatsAppUrl ? (
-                <a href={whatsAppUrl} target="_blank" rel="noreferrer" className="inline-flex min-h-11 shrink-0 items-center justify-center rounded-xl bg-[#148a4a] px-4 text-sm font-bold text-white shadow-lg shadow-[#148a4a]/20 transition hover:bg-[#0f743d] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#148a4a] sm:min-h-12 sm:px-5">
-                  Volver a WhatsApp
-                </a>
-              ) : (
-                <button type="button" onClick={() => void confirmOrder()} disabled={confirmingOrder} className="inline-flex min-h-11 shrink-0 items-center justify-center rounded-xl bg-[#148a4a] px-4 text-sm font-bold text-white shadow-lg shadow-[#148a4a]/20 transition hover:bg-[#0f743d] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#148a4a] disabled:cursor-wait disabled:opacity-60 sm:min-h-12 sm:px-5">
-                  {confirmingOrder ? "Creando pedido…" : "Confirmar pedido"}
-                </button>
-              )
+              <button type="button" onClick={() => void confirmOrder()} disabled={confirmingOrder} className="inline-flex min-h-11 shrink-0 items-center justify-center rounded-xl bg-[#148a4a] px-4 text-sm font-bold text-white shadow-lg shadow-[#148a4a]/20 transition hover:bg-[#0f743d] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#148a4a] disabled:cursor-wait disabled:opacity-60 sm:min-h-12 sm:px-5">
+                {confirmingOrder ? "Abriendo WhatsApp…" : "Confirmar pedido"}
+              </button>
             ) : (
               <button type="button" onClick={() => { setOrderReadyToConfirm(true); setOrderError(null); }} className="inline-flex min-h-11 shrink-0 items-center justify-center rounded-xl bg-red-600 px-4 text-sm font-bold text-white shadow-lg shadow-red-600/20 transition hover:bg-red-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-600 sm:min-h-12 sm:px-5">
                 Comprar
