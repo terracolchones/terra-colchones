@@ -21,10 +21,10 @@ const DEFAULT_CATALOG_WHATSAPP_PHONE = "59178600064";
 
 let client: SupabaseClient | undefined;
 
-function configuredValue(name: "SUPABASE_URL"): string {
-  const value = process.env[name]?.trim();
-  if (!value) throw new Error(`${name} no está configurada`);
-  return value;
+function configuredSupabaseUrl(): string {
+  const url = process.env.SUPABASE_URL?.trim() || process.env.NEXT_PUBLIC_SUPABASE_URL?.trim();
+  if (!url) throw new Error("Falta configurar SUPABASE_URL o NEXT_PUBLIC_SUPABASE_URL");
+  return url;
 }
 
 function configuredSupabaseSecret(): string {
@@ -34,7 +34,9 @@ function configuredSupabaseSecret(): string {
 }
 
 export function isCatalogConfigured(): boolean {
-  return Boolean(process.env.SUPABASE_URL?.trim() && (process.env.SUPABASE_SECRET_KEY?.trim() || process.env.SUPABASE_SERVICE_ROLE_KEY?.trim()));
+  const url = process.env.SUPABASE_URL?.trim() || process.env.NEXT_PUBLIC_SUPABASE_URL?.trim();
+  const secret = process.env.SUPABASE_SECRET_KEY?.trim() || process.env.SUPABASE_SERVICE_ROLE_KEY?.trim();
+  return Boolean(url && secret);
 }
 
 /**
@@ -70,7 +72,7 @@ export async function getCatalogWhatsAppPhone(): Promise<string | null> {
 export function getCatalogServerClient(): SupabaseClient {
   if (client) return client;
 
-  client = createClient(configuredValue("SUPABASE_URL"), configuredSupabaseSecret(), {
+  client = createClient(configuredSupabaseUrl(), configuredSupabaseSecret(), {
     auth: { autoRefreshToken: false, persistSession: false, detectSessionInUrl: false },
   });
   return client;
