@@ -1,5 +1,5 @@
-import { ConnectionGate } from "@/components/ConnectionGate";
+import { redirect } from "next/navigation";
 
 export default function AgentPanelPage() {
-  return <ConnectionGate />;
+  redirect("https://agente.terracolchonesymuebles.online/");
 }
