@@ -19,7 +19,7 @@ el servicio de WhatsApp.
 | Servicio | EasyPanel | Dominio y función | Copia local | Línea de despliegue |
 | --- | --- | --- | --- |
 | Catálogo | `terra-catalogo / catalogo` | Sitio público, catálogo y confirmación de producto. `https://terracolchonesymuebles.online` | `E:\Terra App\01` | `main` |
-| Agente | `agentevps / agente` | Webhook Meta, WhatsApp, OpenAI/RAG, GPS, QR, comprobantes y panel real. `https://agente.terracolchonesymuebles.online` | `E:\Terra App\agent-production-worktree` | Baseline local: `agent-production`; comprobar el campo **Source** de EasyPanel antes de desplegar. |
+| Agente | `agentevps / agente` | Webhook Meta, WhatsApp, OpenAI/RAG, GPS, QR, comprobantes y panel real. `https://agente.terracolchonesymuebles.online` | `E:\Terra App\agent-production-worktree` | `agent-production` (confirmado en EasyPanel el 9 de septiembre de 2026). |
 
 La ruta `/panel-agente` del catálogo solo dirige al panel real; no es una copia
 válida para diagnosticar la operación del agente.

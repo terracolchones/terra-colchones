@@ -13,9 +13,9 @@ contiene secretos, datos de clientes ni configuración privada.
 | Catálogo | `terra-catalogo / catalogo` | Productos, variantes, precios, página pública y confirmación del producto. | `terracolchonesymuebles.online` | `E:\Terra App\01` |
 | Agente | `agentevps / agente` | Webhook Meta, mensajes, OpenAI/RAG, GPS, QR, comprobantes, pedidos y panel de operadores. | `agente.terracolchonesymuebles.online` | `E:\Terra App\agent-production-worktree` |
 
-El catálogo se despliega desde `main`. La copia local del agente parte de
-`agent-production`; antes de desplegar cualquier cambio del agente se debe
-comprobar su rama configurada en **EasyPanel → agente → Source**.
+El catálogo se despliega desde `main`. El agente se despliega desde
+`agent-production`; ambas ramas fueron confirmadas en **EasyPanel → Source** el
+9 de septiembre de 2026.
 
 ## Qué no se debe confundir
 
