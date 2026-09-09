@@ -79,6 +79,7 @@ export interface CatalogOrderSummary {
 }
 
 type PaymentQrDeliveryStatus = "sending" | "sent" | "failed";
+type CatalogPaymentQrDeliveryStatus = "sending" | "sent" | "failed";
 
 const dataDirectory = path.join(process.cwd(), "data");
 let database: Database.Database | undefined;
@@ -184,6 +185,14 @@ function getDatabase(): Database.Database {
     ON catalog_orders(status, created_at DESC);
 
   CREATE TABLE IF NOT EXISTS catalog_order_location_deliveries (
+    order_id TEXT PRIMARY KEY REFERENCES catalog_orders(id) ON DELETE CASCADE,
+    status TEXT CHECK(status IN ('sending', 'sent', 'failed')) NOT NULL,
+    wa_message_id TEXT,
+    attempts INTEGER NOT NULL DEFAULT 0,
+    updated_at INTEGER NOT NULL DEFAULT (unixepoch())
+  );
+
+  CREATE TABLE IF NOT EXISTS catalog_order_payment_qr_deliveries (
     order_id TEXT PRIMARY KEY REFERENCES catalog_orders(id) ON DELETE CASCADE,
     status TEXT CHECK(status IN ('sending', 'sent', 'failed')) NOT NULL,
     wa_message_id TEXT,
@@ -439,10 +448,74 @@ export function saveCatalogOrderLocation(
   const result = db.prepare(
     `UPDATE catalog_orders
      SET latitude = ?, longitude = ?, location_name = ?, location_address = ?,
-         status = 'awaiting_payment', updated_at = unixepoch()
+         updated_at = unixepoch()
      WHERE id = ? AND status = 'awaiting_location' AND location_requested = 1`,
   ).run(location.latitude, location.longitude, location.name ?? null, location.address ?? null, orderId);
   return { saved: result.changes > 0, order: result.changes > 0 ? getCatalogOrderById(orderId) : undefined };
+}
+
+export type CatalogPaymentQrReservation = "reserved" | "already_sent" | "in_progress" | "not_ready";
+
+/**
+ * Reserva un único QR de pago después de recibir GPS. El pedido no avanza a
+ * `awaiting_payment` hasta que WhatsApp haya aceptado el envío del QR.
+ */
+export function reserveCatalogPaymentQrDelivery(
+  orderId: string,
+): { reservation: CatalogPaymentQrReservation; order: CatalogOrder | undefined } {
+  const db = getDatabase();
+  const transaction = db.transaction(() => {
+    const order = getCatalogOrderById(orderId);
+    if (
+      !order
+      || order.status !== "awaiting_location"
+      || !order.conversation_id
+      || order.latitude === null
+      || order.longitude === null
+    ) {
+      return { reservation: "not_ready" as const, order };
+    }
+
+    const existing = db
+      .prepare("SELECT status, updated_at FROM catalog_order_payment_qr_deliveries WHERE order_id = ?")
+      .get(orderId) as { status: CatalogPaymentQrDeliveryStatus; updated_at: number } | undefined;
+    if (existing?.status === "sent") return { reservation: "already_sent" as const, order };
+    if (existing?.status === "sending" && Date.now() / 1000 - existing.updated_at < 300) {
+      return { reservation: "in_progress" as const, order };
+    }
+
+    if (existing) {
+      db.prepare(
+        "UPDATE catalog_order_payment_qr_deliveries SET status = 'sending', attempts = attempts + 1, updated_at = unixepoch() WHERE order_id = ?",
+      ).run(orderId);
+    } else {
+      db.prepare(
+        "INSERT INTO catalog_order_payment_qr_deliveries (order_id, status, attempts) VALUES (?, 'sending', 1)",
+      ).run(orderId);
+    }
+    return { reservation: "reserved" as const, order };
+  });
+  return transaction();
+}
+
+export function completeCatalogPaymentQrDelivery(orderId: string, waMessageId: string): void {
+  const db = getDatabase();
+  const transaction = db.transaction(() => {
+    db.prepare(
+      "UPDATE catalog_order_payment_qr_deliveries SET status = 'sent', wa_message_id = ?, updated_at = unixepoch() WHERE order_id = ?",
+    ).run(waMessageId, orderId);
+    db.prepare(
+      "UPDATE catalog_orders SET status = 'awaiting_payment', updated_at = unixepoch() WHERE id = ? AND status = 'awaiting_location'",
+    ).run(orderId);
+  });
+  transaction();
+}
+
+export function failCatalogPaymentQrDelivery(orderId: string): void {
+  const db = getDatabase();
+  db.prepare(
+    "UPDATE catalog_order_payment_qr_deliveries SET status = 'failed', updated_at = unixepoch() WHERE order_id = ?",
+  ).run(orderId);
 }
 
 export function markCatalogOrderPaymentProof(orderId: string): CatalogOrder | undefined {

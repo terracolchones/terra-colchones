@@ -24,8 +24,8 @@ import { HUMAN_HANDOFF_REPLY } from "@/lib/handoff";
 import { containsUnsafeCheckoutReply, hasSensitiveCommerceData, requestsHumanSupport, shouldSendCatalog } from "@/lib/message-routing";
 import { generateAssistantReply } from "@/lib/openai";
 import { sendCatalogCtaMessage, sendTextMessage } from "@/lib/meta/client";
+import { dispatchCatalogPaymentQr } from "@/lib/catalog-payment-flow";
 import { parseOrderConfirmationCode } from "@/lib/order-code";
-import { sendPaymentQr } from "@/lib/payment-qr";
 
 type RecordValue = Record<string, unknown>;
 
@@ -196,6 +196,19 @@ async function handleTextMessage(message: RecordValue, contactName: string | nul
     return;
   }
   if (activeOrder?.status === "awaiting_location") {
+    if (activeOrder.latitude !== null && activeOrder.longitude !== null) {
+      const delivery = await dispatchCatalogPaymentQr(activeOrder.id);
+      if (delivery === "failed") {
+        await sendAndStore(
+          conversation,
+          phone,
+          "📍 Tu ubicación ya está registrada. El QR de pago está pendiente por un inconveniente técnico; no necesitas enviar nada más por ahora.",
+        );
+      } else if (delivery === "in_progress") {
+        await sendAndStore(conversation, phone, "📍 Estamos enviando tu QR de pago por este chat.");
+      }
+      return;
+    }
     await sendAndStore(
       conversation,
       phone,
@@ -297,18 +310,12 @@ async function handleLocationMessage(message: RecordValue, contactName: string |
     address: typeof location?.address === "string" ? location.address : null,
   });
   if (!saved.saved) return;
-  try {
-    await sendPaymentQr(
-      conversation.id,
-      phone,
-      `✅ Pedido #${order.public_code} listo para coordinar entrega. Escanea este código QR para realizar el pago y envía tu comprobante por este chat. El pago será revisado antes del despacho.`,
-    );
-  } catch (error) {
-    console.error("[order] no se pudo enviar el QR de pago:", error);
+  const delivery = await dispatchCatalogPaymentQr(order.id);
+  if (delivery === "failed") {
     await sendAndStore(
       conversation,
       phone,
-      "📍 Recibimos tu ubicación. Estamos preparando los datos de pago para este pedido.",
+      "📍 Recibimos tu ubicación. El QR de pago está pendiente por un inconveniente técnico; no necesitas enviar nada más por ahora.",
     );
   }
 }

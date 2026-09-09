@@ -107,12 +107,23 @@ export async function getPaymentQrSignedUrl(): Promise<UploadedQr> {
   return { path, signedUrl: data.signedUrl, expiresIn };
 }
 
-export async function checkQrStorage(): Promise<{ bucket: string; configured: boolean; reachable: boolean }> {
+export async function checkQrStorage(): Promise<{ bucket: string; configured: boolean; reachable: boolean; paymentQrReady: boolean }> {
   const bucket = bucketName();
-  if (!isQrStorageConfigured()) return { bucket, configured: false, reachable: false };
+  if (!isQrStorageConfigured()) return { bucket, configured: false, reachable: false, paymentQrReady: false };
 
-  const { data, error } = await getClient().storage.getBucket(bucket);
-  if (error || !data) throw new Error(`No se pudo acceder al bucket ${bucket}: ${error?.message || "sin detalle"}`);
-  if (data.public) throw new Error(`El bucket ${bucket} debe ser privado`);
-  return { bucket, configured: true, reachable: true };
+  const storage = getClient().storage.from(bucket);
+  const { data: bucketInfo, error: bucketError } = await getClient().storage.getBucket(bucket);
+  if (bucketError || !bucketInfo) throw new Error(`No se pudo acceder al bucket ${bucket}: ${bucketError?.message || "sin detalle"}`);
+  if (bucketInfo.public) throw new Error(`El bucket ${bucket} debe ser privado`);
+
+  // La conectividad del bucket no basta: el flujo necesita el archivo QR real.
+  const { data: paymentQr, error: paymentQrError } = await storage.download(paymentQrPath());
+  if (paymentQrError || !paymentQr || paymentQr.size === 0) {
+    throw new Error(`No se pudo leer el QR de pago: ${paymentQrError?.message || "archivo vacío o inexistente"}`);
+  }
+  if (!PAYMENT_QR_CONTENT_TYPES.has(paymentQr.type)) {
+    throw new Error("El QR de pago almacenado debe ser una imagen PNG o JPEG");
+  }
+
+  return { bucket, configured: true, reachable: true, paymentQrReady: true };
 }

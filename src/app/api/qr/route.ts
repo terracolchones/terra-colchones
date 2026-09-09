@@ -33,6 +33,7 @@ export async function GET() {
       {
         configured: isQrStorageConfigured(),
         reachable: false,
+        paymentQrReady: false,
         error: error instanceof Error ? error.message : "No se pudo comprobar el almacenamiento QR",
       },
       { status: 503, headers: { "Cache-Control": "no-store" } },
