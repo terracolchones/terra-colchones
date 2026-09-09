@@ -44,6 +44,22 @@ Agente:
 El cliente nunca debe ver UUIDs, IDs de producto o de variantes. El código corto
 del pedido solo vincula la conversación con un pedido ya registrado.
 
+## Contrato implementado entre servicios
+
+El catálogo valida producto, variante y precio contra su fuente propia. Después
+llama desde el servidor a `POST /api/catalog-orders` del agente. El agente crea
+un pedido con un código público como `T-7Q4K-8M2P`; el navegador no conoce IDs
+internos, teléfonos ni acceso a SQLite.
+
+- En el catálogo: `ORDER_FLOW_AGENT_URL` apunta al agente y `ORDER_FLOW_TOKEN`
+  es privado.
+- En el agente: el mismo `ORDER_FLOW_TOKEN` protege la creación de pedidos.
+- No se deben configurar como `NEXT_PUBLIC_*` ni incluir en enlaces, mensajes o
+  repositorios.
+- El agente añade un token opaco de duración limitada al CTA del catálogo para
+  reconocer el chat de origen, pero el GPS solo sale al recibir la confirmación
+  corta desde WhatsApp.
+
 ## Propiedad de los datos
 
 - El catálogo obtiene productos y variantes desde su almacenamiento de catálogo.

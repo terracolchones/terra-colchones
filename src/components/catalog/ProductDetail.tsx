@@ -8,11 +8,12 @@ import { useMemo, useState } from "react";
 import { availabilityLabel, formatBolivianos } from "@/components/catalog/price";
 import { ProductVisual } from "@/components/catalog/ProductVisual";
 import type { CatalogProduct } from "@/lib/catalog-storefront/types";
-import { buildCatalogWhatsAppUrl } from "@/lib/catalog-storefront/whatsapp";
+import { buildOrderConfirmationWhatsAppUrl } from "@/lib/catalog-storefront/whatsapp";
 
 interface ProductDetailProps {
   product: CatalogProduct;
   whatsAppPhone: string | null;
+  checkoutToken: string | null;
 }
 
 const COLOR_SWATCHES: Array<{ names: string[]; value: string }> = [
@@ -37,19 +38,54 @@ function colorForVariantLabel(label: string): string | null {
   return COLOR_SWATCHES.find(({ names }) => names.some((name) => new RegExp(`(^|\\s)${name}(\\s|$)`).test(normalized)))?.value ?? null;
 }
 
-export function ProductDetail({ product, whatsAppPhone }: ProductDetailProps) {
+export function ProductDetail({ product, whatsAppPhone, checkoutToken }: ProductDetailProps) {
   const activeVariants = useMemo(() => product.variants.filter((variant) => variant.active), [product.variants]);
   const [selectedVariantId, setSelectedVariantId] = useState(activeVariants[0]?.id ?? null);
   const [activeImage, setActiveImage] = useState(0);
   const [orderReadyToConfirm, setOrderReadyToConfirm] = useState(false);
+  const [orderCode, setOrderCode] = useState<string | null>(null);
+  const [confirmingOrder, setConfirmingOrder] = useState(false);
+  const [orderError, setOrderError] = useState<string | null>(null);
   const selectedVariant = activeVariants.find((variant) => variant.id === selectedVariantId) ?? null;
   const price = selectedVariant?.price ?? product.priceFrom;
   const compareAtPrice = selectedVariant?.compareAtPrice ?? product.compareAtPriceFrom;
   const currentAvailability = selectedVariant?.availability ?? product.availability;
   const activeImageUrl = product.images[activeImage]?.url ?? product.images[0]?.url ?? null;
-  const whatsAppUrl = buildCatalogWhatsAppUrl(product, selectedVariant, whatsAppPhone);
+  const whatsAppUrl = orderCode ? buildOrderConfirmationWhatsAppUrl(orderCode, whatsAppPhone) : null;
   const variantColors = activeVariants.map((variant) => colorForVariantLabel(variant.label));
   const hasOnlyColorVariants = activeVariants.length > 0 && variantColors.every((color) => color !== null);
+
+  async function confirmOrder(): Promise<void> {
+    if (confirmingOrder || !whatsAppPhone) return;
+    setConfirmingOrder(true);
+    setOrderError(null);
+    try {
+      const response = await fetch("/api/catalog-orders", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          productSlug: product.slug,
+          variantId: selectedVariant?.id ?? null,
+          checkoutToken,
+        }),
+      });
+      const data = await response.json() as { orderCode?: unknown; error?: unknown };
+      if (!response.ok || typeof data.orderCode !== "string") {
+        throw new Error(typeof data.error === "string" ? data.error : "No pudimos crear el pedido. Inténtalo nuevamente.");
+      }
+      setOrderCode(data.orderCode);
+    } catch (error) {
+      setOrderError(error instanceof Error ? error.message : "No pudimos crear el pedido. Inténtalo nuevamente.");
+    } finally {
+      setConfirmingOrder(false);
+    }
+  }
+
+  function resetOrderConfirmation(): void {
+    setOrderReadyToConfirm(false);
+    setOrderCode(null);
+    setOrderError(null);
+  }
 
   return (
     <main className="min-h-dvh bg-white pb-24 text-stone-900">
@@ -58,7 +94,7 @@ export function ProductDetail({ product, whatsAppPhone }: ProductDetailProps) {
           <div className="h-full sm:h-auto sm:aspect-square">
             <ProductVisual product={product} imageUrl={activeImageUrl} alt={product.images[activeImage]?.alt ?? product.name} />
           </div>
-          <Link href="/catalogo" className="absolute left-4 top-4 grid size-11 place-items-center rounded-full bg-white/90 text-2xl text-stone-900 shadow-sm backdrop-blur transition hover:bg-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#8f1519]" aria-label="Volver al catálogo">‹</Link>
+          <Link href={`/catalogo${checkoutToken ? `?checkout=${encodeURIComponent(checkoutToken)}` : ""}`} className="absolute left-4 top-4 grid size-11 place-items-center rounded-full bg-white/90 text-2xl text-stone-900 shadow-sm backdrop-blur transition hover:bg-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#8f1519]" aria-label="Volver al catálogo">‹</Link>
         </section>
 
         <section className="px-5 pb-1 pt-3 sm:pt-7">
@@ -89,7 +125,7 @@ export function ProductDetail({ product, whatsAppPhone }: ProductDetailProps) {
                         title={variant.label}
                         onClick={() => {
                           setSelectedVariantId(variant.id);
-                          setOrderReadyToConfirm(false);
+                          resetOrderConfirmation();
                         }}
                         className={`grid size-10 place-items-center rounded-full border transition focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#8f1519] ${selected ? "border-stone-950 bg-white" : "border-transparent bg-stone-100 hover:border-stone-300"}`}
                       >
@@ -109,7 +145,7 @@ export function ProductDetail({ product, whatsAppPhone }: ProductDetailProps) {
                         aria-pressed={selected}
                         onClick={() => {
                           setSelectedVariantId(variant.id);
-                          setOrderReadyToConfirm(false);
+                          resetOrderConfirmation();
                         }}
                         className={`inline-flex min-h-9 items-center rounded-full border px-3 text-sm font-semibold transition focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#8f1519] ${selected ? "border-stone-950 bg-stone-950 text-white" : "border-stone-200 bg-white text-stone-800 hover:border-stone-400"}`}
                       >
@@ -175,13 +211,19 @@ export function ProductDetail({ product, whatsAppPhone }: ProductDetailProps) {
             <p className="truncate text-xs text-stone-500">Compra por WhatsApp</p>
             <p className="truncate text-xs font-semibold text-stone-900 sm:text-sm">{selectedVariant?.label ?? product.name}</p>
           </div>
-          {whatsAppUrl ? (
+          {whatsAppPhone ? (
             orderReadyToConfirm ? (
-              <a href={whatsAppUrl} target="_blank" rel="noreferrer" className="inline-flex min-h-11 shrink-0 items-center justify-center rounded-xl bg-[#148a4a] px-4 text-sm font-bold text-white shadow-lg shadow-[#148a4a]/20 transition hover:bg-[#0f743d] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#148a4a] sm:min-h-12 sm:px-5">
-                Confirmar pedido
-              </a>
+              whatsAppUrl ? (
+                <a href={whatsAppUrl} target="_blank" rel="noreferrer" className="inline-flex min-h-11 shrink-0 items-center justify-center rounded-xl bg-[#148a4a] px-4 text-sm font-bold text-white shadow-lg shadow-[#148a4a]/20 transition hover:bg-[#0f743d] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#148a4a] sm:min-h-12 sm:px-5">
+                  Volver a WhatsApp
+                </a>
+              ) : (
+                <button type="button" onClick={() => void confirmOrder()} disabled={confirmingOrder} className="inline-flex min-h-11 shrink-0 items-center justify-center rounded-xl bg-[#148a4a] px-4 text-sm font-bold text-white shadow-lg shadow-[#148a4a]/20 transition hover:bg-[#0f743d] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#148a4a] disabled:cursor-wait disabled:opacity-60 sm:min-h-12 sm:px-5">
+                  {confirmingOrder ? "Creando pedido…" : "Confirmar pedido"}
+                </button>
+              )
             ) : (
-              <button type="button" onClick={() => setOrderReadyToConfirm(true)} className="inline-flex min-h-11 shrink-0 items-center justify-center rounded-xl bg-red-600 px-4 text-sm font-bold text-white shadow-lg shadow-red-600/20 transition hover:bg-red-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-600 sm:min-h-12 sm:px-5">
+              <button type="button" onClick={() => { setOrderReadyToConfirm(true); setOrderError(null); }} className="inline-flex min-h-11 shrink-0 items-center justify-center rounded-xl bg-red-600 px-4 text-sm font-bold text-white shadow-lg shadow-red-600/20 transition hover:bg-red-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-600 sm:min-h-12 sm:px-5">
                 Comprar
               </button>
             )
@@ -191,6 +233,7 @@ export function ProductDetail({ product, whatsAppPhone }: ProductDetailProps) {
             </button>
           )}
         </div>
+        {orderError && <p role="alert" className="mx-auto mt-1 max-w-3xl text-xs font-medium text-red-700">{orderError}</p>}
       </div>
     </main>
   );

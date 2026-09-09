@@ -12,13 +12,14 @@ import type { CatalogHomeSettings, CatalogProduct } from "@/lib/catalog-storefro
 interface StorefrontHomeProps {
   products: CatalogProduct[];
   home: CatalogHomeSettings;
+  checkoutToken: string | null;
 }
 
-function ProductCard({ product }: { product: CatalogProduct }) {
+function ProductCard({ product, checkoutToken }: { product: CatalogProduct; checkoutToken: string | null }) {
   const image = product.images[0]?.url;
   return (
     <Link
-      href={`/catalogo/productos/${encodeURIComponent(product.slug)}`}
+      href={`/catalogo/productos/${encodeURIComponent(product.slug)}${checkoutToken ? `?checkout=${encodeURIComponent(checkoutToken)}` : ""}`}
       className="group flex min-w-0 flex-col overflow-hidden rounded-[1.35rem] border border-stone-200 bg-white shadow-[0_10px_26px_rgba(30,20,12,0.06)] transition hover:-translate-y-0.5 hover:shadow-[0_16px_30px_rgba(30,20,12,0.1)] focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[#8f1519]"
     >
       <div className="relative aspect-[4/5] overflow-hidden bg-stone-100">
@@ -37,9 +38,10 @@ function ProductCard({ product }: { product: CatalogProduct }) {
   );
 }
 
-export function StorefrontHome({ products, home }: StorefrontHomeProps) {
+export function StorefrontHome({ products, home, checkoutToken }: StorefrontHomeProps) {
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState("Todos");
+  const catalogHref = checkoutToken ? `/catalogo?checkout=${encodeURIComponent(checkoutToken)}` : "/catalogo";
   const categories = useMemo(() => ["Todos", ...Array.from(new Set(products.map((product) => product.category)))], [products]);
   const filteredProducts = useMemo(() => {
     const normalized = query.trim().toLocaleLowerCase("es");
@@ -55,7 +57,7 @@ export function StorefrontHome({ products, home }: StorefrontHomeProps) {
       <header className="sticky top-0 z-20 border-b border-stone-200/90 bg-white/95 px-4 py-2 backdrop-blur">
         <div className="mx-auto flex max-w-5xl items-center gap-3">
           <Link
-            href="/catalogo"
+            href={catalogHref}
             className="flex h-16 w-20 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-white focus-visible:outline-2 focus-visible:outline-offset-3 focus-visible:outline-[#8f1519]"
             aria-label="Ir al catálogo Terra"
           >
@@ -126,7 +128,7 @@ export function StorefrontHome({ products, home }: StorefrontHomeProps) {
 
           {filteredProducts.length > 0 ? (
             <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
-              {filteredProducts.map((product) => <ProductCard key={product.id} product={product} />)}
+              {filteredProducts.map((product) => <ProductCard key={product.id} product={product} checkoutToken={checkoutToken} />)}
             </div>
           ) : (
             <div className="mt-4 rounded-3xl border border-dashed border-stone-300 bg-white px-6 py-12 text-center">
