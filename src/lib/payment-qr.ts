@@ -13,7 +13,7 @@ export async function sendPaymentQr(
   caption = PAYMENT_CAPTION,
 ): Promise<{ waMessageId: string }> {
   const qr = await getPaymentQrSignedUrl();
-  const messageId = insertMessage(conversationId, "human", LOCAL_MESSAGE, null);
+  const messageId = insertMessage(conversationId, "assistant", LOCAL_MESSAGE, null);
   const { wa_message_id } = await sendImageMessage(phone, qr.signedUrl, caption);
   updateMessageWaId(messageId, wa_message_id);
   return { waMessageId: wa_message_id };

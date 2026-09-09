@@ -50,6 +50,11 @@ export function ConversationList({ conversations, selectedId, onSelect }: Conver
               </span>
             </div>
             {conversation.name && <p className="mt-0.5 text-xs text-slate-500">{conversation.phone}</p>}
+            {conversation.latest_order && (
+              <p className="mt-1 truncate text-[11px] font-semibold text-emerald-700">
+                #{conversation.latest_order.public_code} · {conversation.latest_order.status === "awaiting_location" ? "GPS" : conversation.latest_order.status === "awaiting_payment" ? "Pago" : conversation.latest_order.status === "payment_proof_received" ? "En revisión" : "Confirmación"}
+              </p>
+            )}
             <p className="mt-2 truncate text-xs text-slate-600">
               {conversation.last_message_preview || "Sin mensajes"}
             </p>

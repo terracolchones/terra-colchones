@@ -106,6 +106,21 @@ export async function sendCatalogCtaMessage(
   });
 }
 
+/** Solicita ubicación mediante el botón nativo de WhatsApp. */
+export async function sendLocationRequestMessage(
+  phone: string,
+  productName: string,
+): Promise<{ wa_message_id: string }> {
+  return sendGraphMessage(phone, {
+    type: "interactive",
+    interactive: {
+      type: "location_request_message",
+      body: { text: `📍 Tu pedido de ${productName} está registrado. Comparte tu ubicación para coordinar la entrega.` },
+      action: { name: "send_location" },
+    },
+  });
+}
+
 export async function sendImageMessage(
   phone: string,
   imageUrl: string,

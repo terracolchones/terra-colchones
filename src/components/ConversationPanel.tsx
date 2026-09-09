@@ -16,6 +16,14 @@ interface MessagesResponse {
   messages: MessageView[];
 }
 
+const ORDER_STATUS_LABEL: Record<NonNullable<ConversationView["latest_order"]>["status"], string> = {
+  awaiting_chat_confirmation: "Pendiente de confirmación",
+  awaiting_location: "Esperando GPS",
+  awaiting_payment: "Esperando comprobante",
+  payment_proof_received: "Comprobante en revisión",
+  payment_confirmed: "Pago confirmado",
+};
+
 export function ConversationPanel({ conversation, onConversationChanged, onDelete }: ConversationPanelProps) {
   const [messages, setMessages] = useState<MessageView[]>([]);
   const [draft, setDraft] = useState("");
@@ -119,6 +127,11 @@ export function ConversationPanel({ conversation, onConversationChanged, onDelet
         <div className="min-w-0">
           <h2 className="truncate font-semibold text-slate-950">{conversation.name || conversation.phone}</h2>
           {conversation.name && <p className="text-xs text-slate-500">{conversation.phone}</p>}
+          {conversation.latest_order && (
+            <p className="mt-1 text-xs font-medium text-emerald-700">
+              Pedido #{conversation.latest_order.public_code} · {ORDER_STATUS_LABEL[conversation.latest_order.status]}
+            </p>
+          )}
         </div>
         <div className="flex items-center gap-2">
           <ModeToggle mode={conversation.mode} disabled={savingMode} onChange={changeMode} />
