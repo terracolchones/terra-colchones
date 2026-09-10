@@ -23,9 +23,14 @@ export function requestsHumanSupport(content: string): boolean {
   return /\b(asesor(?:a)?|atencion\s+humana|persona\s+real|humano|humana|operador|representante)\b/i.test(normalize(content));
 }
 
-/** Datos de pago o ubicación no se mandan al modelo: los gestiona una persona. */
+/** Datos de ubicación o financieros concretos no se mandan al modelo. */
 export function hasSensitiveCommerceData(content: string): boolean {
-  return /\b(gps|ubicacion|direccion|codigo\s+qr|qr|datos?\s+bancarios?|cuenta\s+bancaria|tarjeta|comprobante|transferencia|deposito|pago|pagos)\b/i.test(normalize(content));
+  return /\b(gps|ubicacion|direccion|datos?\s+bancarios?|cuenta\s+bancaria|tarjeta)\b/i.test(normalize(content));
+}
+
+/** Estos pasos solo los resuelve el flujo controlado cuando existe un pedido. */
+export function isControlledCheckoutTopic(content: string): boolean {
+  return /\b(gps|ubicacion|direccion|codigo\s+qr|qr|comprobante|transferencia|deposito|pago|pagos)\b/i.test(normalize(content));
 }
 
 /** Preguntas que deben llegar al RAG, aunque sean el primer mensaje o sean cortas. */

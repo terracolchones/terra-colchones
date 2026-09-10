@@ -193,6 +193,25 @@ export async function getPublishedCatalogProductsForRag(): Promise<CatalogProduc
   }
 }
 
+/** Recuperación RAG escalable: solo vuelve a leer las fichas que coincidieron. */
+export async function getPublishedCatalogProductsForRagIds(productIds: string[]): Promise<CatalogProduct[]> {
+  const ids = [...new Set(productIds.filter((id) => id.length > 0 && id.length <= 128))];
+  if (!isCatalogConfigured() || ids.length === 0) return [];
+  try {
+    const { data, error } = await getCatalogServerClient()
+      .from("catalog_products")
+      .select(productFields)
+      .in("id", ids)
+      .eq("published", true)
+      .order("sort_order", { ascending: true });
+    if (error) throw new Error(error.message);
+    return (data ?? []).map((item) => toProduct(item as Record<string, unknown>));
+  } catch (error) {
+    if (!catalogSchemaMissing(error)) console.error("[catalog] no se pudieron leer las fichas RAG seleccionadas:", error);
+    return [];
+  }
+}
+
 export async function getPublishedProductBySlug(slug: string): Promise<CatalogProduct | null> {
   if (!isCatalogConfigured()) {
     return process.env.NODE_ENV === "production" ? null : DEVELOPMENT_CATALOG_PREVIEW.find((product) => product.slug === slug) ?? null;

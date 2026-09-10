@@ -13,6 +13,7 @@ describe("enrutamiento comercial", () => {
     expect(shouldSendCatalog("¿Hacen envíos?", 2)).toBe(false);
     expect(shouldSendCatalog("¿Venden colchones?", 0)).toBe(false);
     expect(shouldSendCatalog("Tienen almohadas", 0)).toBe(false);
+    expect(shouldSendCatalog("¿Qué formas de pago aceptan?", 0)).toBe(false);
   });
 
   it("no desvía una solicitud de asesor al catálogo", () => {

@@ -21,8 +21,9 @@ import { getProductForCatalogLead } from "@/lib/catalog-storefront/server";
 import { parseCatalogLeadContext } from "@/lib/catalog-storefront/whatsapp";
 import { dispatchCatalogLocationRequest } from "@/lib/catalog-order-flow";
 import { HUMAN_HANDOFF_REPLY } from "@/lib/handoff";
-import { containsUnsafeCheckoutReply, hasSensitiveCommerceData, requestsHumanSupport, shouldSendCatalog } from "@/lib/message-routing";
+import { containsUnsafeCheckoutReply, hasSensitiveCommerceData, isControlledCheckoutTopic, isKnowledgeQuestion, requestsHumanSupport, shouldSendCatalog } from "@/lib/message-routing";
 import { generateAssistantReply } from "@/lib/openai";
+import { saleFlowResume } from "@/lib/rag/resume";
 import { sendCatalogCtaMessage, sendTextMessage } from "@/lib/meta/client";
 import { dispatchCatalogPaymentQr } from "@/lib/catalog-payment-flow";
 import { parseOrderConfirmationCode } from "@/lib/order-code";
@@ -112,6 +113,36 @@ async function sendCatalog(
   }
 }
 
+/** Responde una duda sin sacar el chat del pedido que ya estaba en curso. */
+async function answerKnowledgeQuestion(
+  conversation: Conversation,
+  phone: string,
+  activeOrder?: ReturnType<typeof getLatestActiveCatalogOrderForConversation>,
+): Promise<void> {
+  try {
+    const startedAt = Date.now();
+    const reply = await generateAssistantReply(
+      getRecentHistory(conversation.id, 20),
+      getCatalogLeadContext(conversation.id),
+    );
+    console.log("[wh] LLM en " + (Date.now() - startedAt) + "ms");
+    const content = reply.needsAdvisorConfirmation || containsUnsafeCheckoutReply(reply.content)
+      ? "Para darte ese dato con precisión, un asesor debe confirmarlo. Si prefieres, escribe “quiero hablar con un asesor”."
+      : reply.content;
+    const resume = activeOrder ? saleFlowResume(activeOrder) : "";
+    await sendAndStore(conversation, phone, resume ? `${content}\n\n${resume}` : content);
+  } catch (error) {
+    console.error("[wh] error procesando texto:", error);
+    try {
+      const resume = activeOrder ? saleFlowResume(activeOrder) : "";
+      const content = "No pudimos consultar esa información ahora. Puedes explorar el catálogo o escribir “quiero hablar con un asesor”.";
+      await sendAndStore(conversation, phone, resume ? `${content}\n\n${resume}` : content);
+    } catch (sendError) {
+      console.error("[wh] no se pudo enviar el mensaje de respaldo:", sendError);
+    }
+  }
+}
+
 async function handleTextMessage(message: RecordValue, contactName: string | null, origin?: string): Promise<void> {
   const textData = isRecord(message.text) ? message.text : undefined;
   const waMessageId = typeof message.id === "string" ? message.id : undefined;
@@ -187,6 +218,12 @@ async function handleTextMessage(message: RecordValue, contactName: string | nul
   }
 
   const activeOrder = getLatestActiveCatalogOrderForConversation(conversation.id);
+  // Una duda comercial no debe cortar la venta. Las acciones sensibles de
+  // ubicación, QR, pago y comprobante mantienen el flujo transaccional.
+  if (activeOrder && isKnowledgeQuestion(content) && !hasSensitiveCommerceData(content) && !isControlledCheckoutTopic(content)) {
+    await answerKnowledgeQuestion(conversation, phone, activeOrder);
+    return;
+  }
   if (activeOrder?.status === "awaiting_chat_confirmation") {
     await sendAndStore(
       conversation,
@@ -256,34 +293,7 @@ async function handleTextMessage(message: RecordValue, contactName: string | nul
     return;
   }
 
-  try {
-    const startedAt = Date.now();
-    const reply = await generateAssistantReply(
-      getRecentHistory(conversation.id, 20),
-      getCatalogLeadContext(conversation.id),
-    );
-    console.log("[wh] LLM en " + (Date.now() - startedAt) + "ms");
-    if (reply.requiresHuman || containsUnsafeCheckoutReply(reply.content)) {
-      await sendAndStore(
-        conversation,
-        phone,
-        "Para darte ese dato con precisión, revisa el catálogo o escribe “quiero hablar con un asesor” si prefieres atención humana.",
-      );
-      return;
-    }
-    await sendAndStore(conversation, phone, reply.content);
-  } catch (error) {
-    console.error("[wh] error procesando texto:", error);
-    try {
-      await sendAndStore(
-        conversation,
-        phone,
-        "No pudimos consultar esa información ahora. Puedes explorar el catálogo o escribir “quiero hablar con un asesor”.",
-      );
-    } catch (sendError) {
-      console.error("[wh] no se pudo enviar el mensaje de respaldo:", sendError);
-    }
-  }
+  await answerKnowledgeQuestion(conversation, phone);
 }
 
 async function handleLocationMessage(message: RecordValue, contactName: string | null): Promise<void> {
