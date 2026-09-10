@@ -95,13 +95,19 @@ function publicImageUrl(path: string): string {
   return getCatalogServerClient().storage.from(CATALOG_BUCKET).getPublicUrl(path).data.publicUrl;
 }
 
+function catalogErrorMessage(error: unknown): string {
+  if (error instanceof Error) return error.message;
+  if (error && typeof error === "object" && "message" in error && typeof error.message === "string") return error.message;
+  return String(error);
+}
+
 export function catalogSchemaMissing(error: unknown): boolean {
-  const message = error instanceof Error ? error.message : String(error);
+  const message = catalogErrorMessage(error);
   return message.includes("Could not find the table") || message.includes("relation \"catalog_");
 }
 
 function catalogVariantExtensionsMissing(error: unknown): boolean {
-  const message = error instanceof Error ? error.message : String(error);
+  const message = catalogErrorMessage(error);
   return catalogSchemaMissing(error) || message.includes("color_hex") || message.includes("catalog_variant_images");
 }
 
