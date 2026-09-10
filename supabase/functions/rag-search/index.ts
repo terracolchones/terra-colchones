@@ -9,9 +9,14 @@ function authorized(request: Request): boolean {
 }
 
 function embeddingFrom(result: unknown): number[] | null {
-  if (!Array.isArray(result)) return null;
-  const vector = Array.isArray(result[0]) ? result[0] : result;
-  return vector.every((value) => typeof value === "number" && Number.isFinite(value)) ? vector as number[] : null;
+  const vector = Array.isArray(result)
+    ? result
+    : ArrayBuffer.isView(result)
+      ? Array.from(result)
+      : [];
+  return vector.length === 384 && vector.every((value) => typeof value === "number" && Number.isFinite(value))
+    ? vector as number[]
+    : null;
 }
 
 /** Búsqueda semántica interna. Nunca se expone al navegador ni a WhatsApp. */

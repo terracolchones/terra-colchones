@@ -8,9 +8,20 @@ interface Job {
 }
 
 function embeddingFrom(result: unknown): number[] | null {
-  if (!Array.isArray(result)) return null;
-  const vector = Array.isArray(result[0]) ? result[0] : result;
-  return vector.every((value) => typeof value === "number" && Number.isFinite(value)) ? vector as number[] : null;
+  const vector = Array.isArray(result)
+    ? result
+    : ArrayBuffer.isView(result)
+      ? Array.from(result)
+      : [];
+  return vector.length === 384 && vector.every((value) => typeof value === "number" && Number.isFinite(value))
+    ? vector as number[]
+    : null;
+}
+
+function embeddingsFrom(result: unknown): unknown[] {
+  if (!Array.isArray(result)) return [result];
+  const first = result[0];
+  return Array.isArray(first) || ArrayBuffer.isView(first) ? result : [result];
 }
 
 /** Worker interno idempotente; se programa cada minuto desde Supabase. */
@@ -29,7 +40,7 @@ export default {
 
       const model = new Supabase.ai.Session("gte-small");
       const embeddings = await model.run(jobs.map((job) => job.content), { mean_pool: true, normalize: true });
-      const vectors = Array.isArray(embeddings) && Array.isArray(embeddings[0]) ? embeddings : [embeddings];
+      const vectors = embeddingsFrom(embeddings);
       await Promise.all(jobs.map(async (job, index) => {
         const vector = embeddingFrom(vectors[index]);
         if (!vector || vector.length !== 384) {
