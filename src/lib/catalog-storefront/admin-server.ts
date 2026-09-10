@@ -12,6 +12,7 @@ const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3
 const STORAGE_PATH_PATTERN = /^products\/[0-9a-f-]{36}\/[a-zA-Z0-9_-]{1,128}\.(png|jpe?g|webp)$/;
 const VARIANT_STORAGE_PATH_PATTERN = /^products\/[0-9a-f-]{36}\/variants\/[0-9a-f-]{36}\/[a-zA-Z0-9_-]{1,128}\.(png|jpe?g|webp)$/;
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
+const MAX_GALLERY_IMAGES = 3;
 
 export class CatalogRequestError extends Error {
   constructor(message: string, public readonly status = 400) {
@@ -150,14 +151,15 @@ export function parseProductInput(payload: unknown): ProductInput {
   const name = requiredText(value.name, "El nombre", 140);
   const rawVariants = Array.isArray(value.variants) ? value.variants : [];
   const rawImages = Array.isArray(value.images) ? value.images : [];
-  if (rawVariants.length > 24 || rawImages.length > 12) throw new CatalogRequestError("El producto tiene demasiadas variantes o imágenes");
+  if (rawVariants.length > 24) throw new CatalogRequestError("El producto tiene demasiadas variantes");
+  if (rawImages.length > MAX_GALLERY_IMAGES) throw new CatalogRequestError("El producto puede tener como máximo 3 fotos");
 
   const variants = rawVariants.map((item, index) => {
     const variant = asRecord(item);
     const id = optionalText(variant.id, 36);
     if (id && !UUID_PATTERN.test(id)) throw new CatalogRequestError("El identificador de una variante no es válido");
     const rawVariantImages = Array.isArray(variant.images) ? variant.images : [];
-    if (rawVariantImages.length > 12) throw new CatalogRequestError("Una variante puede tener hasta 12 fotos");
+    if (rawVariantImages.length > MAX_GALLERY_IMAGES) throw new CatalogRequestError("Una variante puede tener como máximo 3 fotos");
     const colorValue = optionalText(variant.colorHex, 7);
     const colorHex = normalizeColorHex(colorValue);
     if (colorValue && !colorHex) throw new CatalogRequestError("El color de la variante no es válido");
@@ -239,7 +241,10 @@ async function replaceRelations(productId: string, input: ProductInput): Promise
     if (error) {
       const message = error.message || "";
       const hasVariantExtensions = input.variants.some((variant) => variant.colorHex || variant.images.length > 0);
-      if (!message.includes("color_hex") || hasVariantExtensions) throw new Error(error.message);
+      if (message.includes("color_hex") && hasVariantExtensions) {
+        throw new CatalogRequestError("Falta activar la migración de colores y galerías de variantes", 503);
+      }
+      if (!message.includes("color_hex")) throw new Error(error.message);
       const legacyVariants = variants.map((variant) => ({
         id: variant.id,
         product_id: variant.product_id,
@@ -309,10 +314,22 @@ async function replaceRelations(productId: string, input: ProductInput): Promise
   }
 }
 
+async function uniqueProductSlug(baseSlug: string, currentProductId: string | null = null): Promise<string> {
+  const client = getCatalogServerClient();
+  for (let suffix = 1; suffix <= 99; suffix += 1) {
+    const candidate = suffix === 1 ? baseSlug : `${baseSlug}-${suffix}`;
+    const { data, error } = await client.from("catalog_products").select("id").eq("slug", candidate).maybeSingle();
+    if (error) throw new Error(error.message);
+    if (!data || String(data.id) === currentProductId) return candidate;
+  }
+  throw new CatalogRequestError("No se pudo generar una URL única para el producto");
+}
+
 export async function createCatalogProduct(input: ProductInput): Promise<string> {
+  const slug = await uniqueProductSlug(input.slug);
   const { data, error } = await getCatalogServerClient().from("catalog_products").insert({
     external_code: input.externalCode,
-    slug: input.slug,
+    slug,
     name: input.name,
     category: input.category,
     short_description: input.shortDescription,
@@ -332,9 +349,10 @@ export async function createCatalogProduct(input: ProductInput): Promise<string>
 
 export async function updateCatalogProduct(productId: string, input: ProductInput): Promise<void> {
   if (!UUID_PATTERN.test(productId)) throw new CatalogRequestError("El producto no es válido", 404);
+  const slug = await uniqueProductSlug(input.slug, productId);
   const { error } = await getCatalogServerClient().from("catalog_products").update({
     external_code: input.externalCode,
-    slug: input.slug,
+    slug,
     name: input.name,
     category: input.category,
     short_description: input.shortDescription,
@@ -365,6 +383,9 @@ function imageMimeType(file: File): { mimeType: string; extension: string } {
 export async function uploadCatalogImage(productId: string, file: File): Promise<{ path: string; url: string }> {
   if (!UUID_PATTERN.test(productId)) throw new CatalogRequestError("Guarda el producto antes de subir imágenes");
   if (file.size === 0 || file.size > MAX_IMAGE_BYTES) throw new CatalogRequestError("La imagen debe pesar menos de 5 MB");
+  const { count, error: countError } = await getCatalogServerClient().from("catalog_product_images").select("id", { count: "exact", head: true }).eq("product_id", productId);
+  if (countError) throw new Error(countError.message);
+  if ((count ?? 0) >= MAX_GALLERY_IMAGES) throw new CatalogRequestError("El producto ya tiene el máximo de 3 fotos");
   const { mimeType, extension } = imageMimeType(file);
   const path = `products/${productId}/${crypto.randomUUID()}.${extension}`;
   const bytes = Buffer.from(await file.arrayBuffer());
@@ -385,6 +406,9 @@ export async function uploadCatalogVariantImage(productId: string, variantId: st
   if (variantError || !variant) throw new CatalogRequestError("La variante no pertenece a este producto", 404);
   const { error: schemaError } = await getCatalogServerClient().from("catalog_variant_images").select("id").eq("variant_id", variantId).limit(1);
   if (schemaError) throw new CatalogRequestError("Falta activar la migración de galerías de variantes", 503);
+  const { count, error: countError } = await getCatalogServerClient().from("catalog_variant_images").select("id", { count: "exact", head: true }).eq("variant_id", variantId);
+  if (countError) throw new Error(countError.message);
+  if ((count ?? 0) >= MAX_GALLERY_IMAGES) throw new CatalogRequestError("La variante ya tiene el máximo de 3 fotos");
   const { mimeType, extension } = imageMimeType(file);
   const path = `products/${productId}/variants/${variantId}/${crypto.randomUUID()}.${extension}`;
   const bytes = Buffer.from(await file.arrayBuffer());
@@ -449,6 +473,9 @@ export async function saveAdminHomeSettings(payload: unknown): Promise<void> {
 export function jsonError(error: unknown) {
   if (error instanceof CatalogRequestError) return NextResponse.json({ error: error.message }, { status: error.status });
   const message = error instanceof Error ? error.message : "No se pudo procesar la solicitud";
+  if (message.includes("catalog_products_slug_key")) {
+    return NextResponse.json({ error: "Ya existe un producto con esa URL. Usa otro nombre o URL." }, { status: 409 });
+  }
   console.error("[catalog-admin]", error);
   return NextResponse.json({ error: message }, { status: 500 });
 }

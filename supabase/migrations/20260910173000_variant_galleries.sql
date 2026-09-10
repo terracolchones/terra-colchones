@@ -1,5 +1,6 @@
 -- Cada variante representa una combinación comercial concreta, por ejemplo
--- “2 plazas” con un color específico. Las fotos de variante son opcionales;
+-- “2 plazas” con un color específico. Las fotos de variante son opcionales,
+-- con un máximo de tres por galería;
 -- las fotos generales del producto siguen siendo el respaldo.
 alter table public.catalog_variants
   add column if not exists color_hex text;

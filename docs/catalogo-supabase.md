@@ -17,14 +17,20 @@ Cada producto y variante incluye `external_code`. Déjalo vacío durante la carg
 
 ## Variantes, puntos de color y galerías
 
-Cada fila de **Variantes** representa una combinación comercial exacta: por
-ejemplo, `2 plazas` en un color determinado. Puede tener su código externo y un
-precio propio opcional; si el precio queda vacío, la ficha utiliza el precio
-general del producto. El panel no maneja stock numérico.
+Primero se crea el **producto principal** con nombre, categoría, precio,
+descripción breve, detalles técnicos y hasta tres fotos generales. Esos datos
+se comparten con todas las variantes.
+
+El botón **Crear variante** abre una ficha separada que ya hereda la información
+del producto principal. Cada variante representa una combinación comercial
+exacta: por ejemplo, `1.5 plazas`, `2 plazas`, `Café Touch 205` o cualquier
+modelo. Solo necesita su nombre o tamaño, código externo opcional, punto de
+color y hasta tres fotos propias. El panel no maneja stock numérico ni precios
+por variante.
 
 Activa **Mostrar punto de color** y elige el tono. La ficha pública enseña solo
 el punto, nunca un nombre de color. En esa misma fila se puede subir una galería
-propia: es opcional y admite hasta 12 fotos. Cuando no hay fotos de la variante,
+propia: es opcional y admite hasta tres fotos. Cuando no hay fotos de la variante,
 la ficha muestra la galería general del producto como respaldo. En móvil las
 fotos se deslizan horizontalmente; en escritorio se muestran la imagen principal
 y sus miniaturas.

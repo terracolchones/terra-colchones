@@ -4,11 +4,12 @@
  * para no fijar dominios de imágenes en la configuración de Next. */
 /* eslint-disable @next/next/no-img-element */
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useId, useState } from "react";
 import { availabilityLabel } from "@/components/catalog/price";
 import { normalizeColorHex } from "@/lib/catalog-storefront/color-variants";
 import type { CatalogHomeSettings, CatalogImage, CatalogProduct, CatalogVariant, ProductAvailability } from "@/lib/catalog-storefront/types";
 
+const MAX_GALLERY_IMAGES = 3;
 type EditableImage = Omit<CatalogImage, "id" | "url"> & { id?: string; url?: string };
 type EditableVariant = Omit<CatalogVariant, "id" | "images"> & { id?: string; images: EditableImage[] };
 
@@ -31,51 +32,20 @@ interface EditableProduct {
   images: EditableImage[];
 }
 
-const AVAILABILITY_OPTIONS: Array<{ value: ProductAvailability; label: string }> = [
-  { value: "available", label: "Disponible" },
-  { value: "out_of_stock", label: "Sin stock" },
-  { value: "coming_soon", label: "Próximamente" },
-];
+function autoSlug(value: string): string {
+  return value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "nuevo-producto";
+}
 
 function blankProduct(position: number): EditableProduct {
-  return {
-    externalCode: "",
-    slug: "",
-    name: "Nuevo producto",
-    category: "Colchones",
-    shortDescription: "",
-    description: "",
-    specificationsText: "",
-    priceFrom: "",
-    compareAtPriceFrom: "",
-    availability: "coming_soon",
-    published: false,
-    featured: false,
-    sortOrder: String(position),
-    variants: [],
-    images: [],
-  };
+  return { externalCode: "", slug: "", name: "Nuevo producto", category: "Colchones", shortDescription: "", description: "", specificationsText: "", priceFrom: "", compareAtPriceFrom: "", availability: "coming_soon", published: false, featured: false, sortOrder: String(position), variants: [], images: [] };
 }
 
 function editableProduct(product: CatalogProduct): EditableProduct {
-  return {
-    id: product.id,
-    externalCode: product.externalCode ?? "",
-    slug: product.slug,
-    name: product.name,
-    category: product.category,
-    shortDescription: product.shortDescription,
-    description: product.description,
-    specificationsText: product.specifications.join("\n"),
-    priceFrom: product.priceFrom?.toString() ?? "",
-    compareAtPriceFrom: product.compareAtPriceFrom?.toString() ?? "",
-    availability: product.availability,
-    published: product.published,
-    featured: product.featured,
-    sortOrder: String(product.sortOrder),
-    variants: product.variants.map((variant) => ({ ...variant })),
-    images: product.images.map((image) => ({ ...image })),
-  };
+  return { id: product.id, externalCode: product.externalCode ?? "", slug: product.slug, name: product.name, category: product.category, shortDescription: product.shortDescription, description: product.description, specificationsText: product.specifications.join("\n"), priceFrom: product.priceFrom?.toString() ?? "", compareAtPriceFrom: product.compareAtPriceFrom?.toString() ?? "", availability: product.availability, published: product.published, featured: product.featured, sortOrder: String(product.sortOrder), variants: product.variants.map((variant) => ({ ...variant, images: variant.images.map((image) => ({ ...image })) })), images: product.images.map((image) => ({ ...image })) };
+}
+
+function blankVariant(product: EditableProduct): EditableVariant {
+  return { externalCode: null, label: "Nueva variante", colorHex: null, price: null, compareAtPrice: null, availability: product.availability, active: true, sortOrder: Math.max(0, ...product.variants.map((variant) => variant.sortOrder)) + 1, images: [] };
 }
 
 function toPayload(product: EditableProduct) {
@@ -86,7 +56,7 @@ function toPayload(product: EditableProduct) {
     name: product.name,
     category: product.category,
     shortDescription: product.shortDescription,
-    description: product.description,
+    description: product.description || product.shortDescription,
     specifications: product.specificationsText.split("\n").map((item) => item.trim()).filter(Boolean),
     priceFrom: nullableNumber(product.priceFrom),
     compareAtPriceFrom: nullableNumber(product.compareAtPriceFrom),
@@ -94,314 +64,70 @@ function toPayload(product: EditableProduct) {
     published: product.published,
     featured: product.featured,
     sortOrder: product.sortOrder.trim() === "" ? 0 : Number(product.sortOrder),
-    variants: product.variants.map((variant) => ({
-      id: variant.id ?? null,
-      externalCode: variant.externalCode,
-      label: variant.label,
-      colorHex: variant.colorHex,
-      price: variant.price,
-      compareAtPrice: variant.compareAtPrice,
-      availability: variant.availability,
-      active: variant.active,
-      sortOrder: variant.sortOrder,
-      images: variant.images.map((image) => ({ id: image.id ?? null, path: image.path, alt: image.alt, sortOrder: image.sortOrder })),
-    })),
+    variants: product.variants.map((variant) => ({ id: variant.id ?? null, externalCode: variant.externalCode, label: variant.label, colorHex: variant.colorHex, price: null, compareAtPrice: null, availability: product.availability, active: variant.active, sortOrder: variant.sortOrder, images: variant.images.map((image) => ({ id: image.id ?? null, path: image.path, alt: image.alt, sortOrder: image.sortOrder })) })),
     images: product.images.map((image) => ({ id: image.id ?? null, path: image.path, alt: image.alt, sortOrder: image.sortOrder })),
   };
 }
 
-function FieldLabel({ children }: { children: React.ReactNode }) {
-  return <label className="mb-1.5 block text-xs font-bold text-slate-700">{children}</label>;
-}
+function FieldLabel({ children }: { children: React.ReactNode }) { return <span className="mb-1.5 block text-xs font-bold text-slate-700">{children}</span>; }
+function TextInput({ value, onChange, placeholder, type = "text" }: { value: string; onChange: (value: string) => void; placeholder?: string; type?: "text" | "number" | "password" }) { return <input type={type} value={value} onChange={(event) => onChange(event.target.value)} placeholder={placeholder} className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-950 outline-none transition focus:border-[#8f1519] focus:ring-4 focus:ring-[#8f1519]/10" />; }
 
-function TextInput({ value, onChange, placeholder, type = "text" }: { value: string; onChange: (value: string) => void; placeholder?: string; type?: "text" | "number" | "password" }) {
-  return <input type={type} value={value} onChange={(event) => onChange(event.target.value)} placeholder={placeholder} className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-950 outline-none transition focus:border-[#8f1519] focus:ring-4 focus:ring-[#8f1519]/10" />;
-}
-
-function Toggle({ checked, onChange, label, description }: { checked: boolean; onChange: (checked: boolean) => void; label: string; description: string }) {
-  return (
-    <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-slate-200 bg-white p-3">
-      <input checked={checked} onChange={(event) => onChange(event.target.checked)} type="checkbox" className="mt-0.5 size-4 accent-[#8f1519]" />
-      <span><span className="block text-sm font-semibold text-slate-900">{label}</span><span className="mt-0.5 block text-xs leading-4 text-slate-500">{description}</span></span>
-    </label>
-  );
+function PhotoDropzone({ title, description, images, onUpload, onRemove, disabledMessage, uploading }: { title: string; description: string; images: EditableImage[]; onUpload: (files: File[]) => void; onRemove: (index: number) => void; disabledMessage?: string; uploading: boolean }) {
+  const inputId = useId();
+  const [dragging, setDragging] = useState(false);
+  const remaining = Math.max(0, MAX_GALLERY_IMAGES - images.length);
+  const enabled = !disabledMessage && !uploading && remaining > 0;
+  const submitFiles = (files: FileList | File[]) => {
+    if (!enabled) return;
+    const selected = Array.from(files).filter((file) => ["image/png", "image/jpeg", "image/webp"].includes(file.type)).slice(0, remaining);
+    if (selected.length > 0) onUpload(selected);
+  };
+  return <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5"><div className="flex flex-wrap items-start justify-between gap-3"><div><h3 className="text-sm font-bold text-slate-950">{title}</h3><p className="mt-1 max-w-xl text-xs leading-4 text-slate-500">{description}</p></div><span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-600">{images.length}/{MAX_GALLERY_IMAGES} fotos</span></div><div onDragOver={(event) => { if (enabled) { event.preventDefault(); setDragging(true); } }} onDragLeave={() => setDragging(false)} onDrop={(event) => { event.preventDefault(); setDragging(false); submitFiles(event.dataTransfer.files); }} className={`mt-4 rounded-2xl border-2 border-dashed p-3 transition ${dragging ? "border-[#8f1519] bg-rose-50" : "border-slate-200 bg-slate-50"}`}>{enabled ? <label htmlFor={inputId} className="grid min-h-28 cursor-pointer place-items-center rounded-xl px-4 text-center transition hover:bg-white"><span><span aria-hidden="true" className="mx-auto grid size-10 place-items-center rounded-full border border-[#8f1519]/25 bg-white text-xl font-semibold text-[#8f1519]">+</span><span className="mt-2 block text-sm font-bold text-slate-800">{uploading ? "Subiendo fotos…" : `Arrastra hasta ${remaining} foto${remaining === 1 ? "" : "s"}`}</span><span className="mt-1 block text-xs text-slate-500">o haz clic para seleccionarlas. PNG, JPG o WEBP.</span></span><input id={inputId} type="file" accept="image/png,image/jpeg,image/webp" multiple onChange={(event) => { submitFiles(event.target.files ?? []); event.currentTarget.value = ""; }} className="sr-only" /></label> : <div className="grid min-h-28 place-items-center px-4 text-center text-sm leading-5 text-slate-500">{disabledMessage ?? "Ya llegaste al máximo de tres fotos."}</div>}{images.length > 0 && <div className="mt-3 grid grid-cols-3 gap-2 sm:gap-3">{images.map((image, index) => <div key={image.id ?? image.path} className="relative aspect-square overflow-hidden rounded-xl border border-slate-200 bg-white">{image.url ? <img src={image.url} alt={image.alt} className="size-full object-cover" /> : <div className="grid size-full place-items-center text-xs text-slate-500">Foto {index + 1}</div>}<button type="button" onClick={() => onRemove(index)} aria-label={`Quitar foto ${index + 1}`} className="absolute right-1.5 top-1.5 grid size-7 place-items-center rounded-full bg-white/95 text-base font-bold text-rose-700 shadow-sm">×</button>{index === 0 && <span className="absolute bottom-1.5 left-1.5 rounded-md bg-slate-950/75 px-1.5 py-0.5 text-[10px] font-bold text-white">Portada</span>}</div>)}</div>}</div></section>;
 }
 
 function AdminLogin({ onAccess }: { onAccess: (password: string) => void }) {
   const [password, setPassword] = useState("");
   const [state, setState] = useState<"idle" | "checking">("idle");
   const [message, setMessage] = useState<string | null>(null);
-
-  async function signIn(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setState("checking");
-    setMessage(null);
-    try {
-      const response = await fetch("/api/catalog/admin/products", { headers: { "X-Catalog-Admin-Key": password } });
-      if (!response.ok) {
-        const data = await response.json().catch(() => ({})) as { error?: string };
-        throw new Error(data.error || "No se pudo abrir el panel");
-      }
-      onAccess(password);
-    } catch (error) {
-      setState("idle");
-      setMessage(error instanceof Error ? error.message : "No se pudo abrir el panel");
-    }
-  }
-
-  return (
-    <main className="grid min-h-dvh place-items-center bg-slate-950 px-5">
-      <form onSubmit={signIn} className="w-full max-w-sm rounded-3xl border border-white/10 bg-white p-7 shadow-2xl">
-        <p className="text-xs font-bold tracking-[0.14em] text-[#9a2022]">CATÁLOGO TERRA</p>
-        <h1 className="mt-3 text-2xl font-semibold tracking-tight text-slate-950">Panel privado</h1>
-        <p className="mt-2 text-sm leading-5 text-slate-500">Escribe la clave de administrador para entrar directamente.</p>
-        <label className="mt-6 block"><FieldLabel>Clave de administrador</FieldLabel><TextInput value={password} onChange={setPassword} placeholder="admin" type="password" /></label>
-        <button disabled={!password || state === "checking"} className="mt-5 min-h-12 w-full rounded-xl bg-[#8f1519] px-4 text-sm font-bold text-white transition hover:bg-[#741115] disabled:cursor-wait disabled:opacity-60">
-          {state === "checking" ? "Abriendo panel…" : "Entrar al panel"}
-        </button>
-        {message && <p className="mt-4 text-sm leading-5 text-rose-700">{message}</p>}
-      </form>
-    </main>
-  );
+  async function signIn(event: React.FormEvent<HTMLFormElement>) { event.preventDefault(); setState("checking"); setMessage(null); try { const response = await fetch("/api/catalog/admin/products", { headers: { "X-Catalog-Admin-Key": password } }); if (!response.ok) { const data = await response.json().catch(() => ({})) as { error?: string }; throw new Error(data.error || "No se pudo abrir el panel"); } onAccess(password); } catch (error) { setState("idle"); setMessage(error instanceof Error ? error.message : "No se pudo abrir el panel"); } }
+  return <main className="grid min-h-dvh place-items-center bg-slate-950 px-5"><form onSubmit={signIn} className="w-full max-w-sm rounded-3xl border border-white/10 bg-white p-7 shadow-2xl"><p className="text-xs font-bold tracking-[0.14em] text-[#9a2022]">CATÁLOGO TERRA</p><h1 className="mt-3 text-2xl font-semibold tracking-tight text-slate-950">Panel privado</h1><p className="mt-2 text-sm leading-5 text-slate-500">Escribe la clave de administrador para entrar directamente.</p><label className="mt-6 block"><FieldLabel>Clave de administrador</FieldLabel><TextInput value={password} onChange={setPassword} placeholder="admin" type="password" /></label><button disabled={!password || state === "checking"} className="mt-5 min-h-12 w-full rounded-xl bg-[#8f1519] px-4 text-sm font-bold text-white transition hover:bg-[#741115] disabled:cursor-wait disabled:opacity-60">{state === "checking" ? "Abriendo panel…" : "Entrar al panel"}</button>{message && <p className="mt-4 text-sm leading-5 text-rose-700">{message}</p>}</form></main>;
 }
 
-function ProductEditor({ product, onChange, onSave, onDelete, saving, onUpload, onUploadVariant, uploading }: {
-  product: EditableProduct;
-  onChange: (next: EditableProduct) => void;
-  onSave: () => void;
-  onDelete: () => void;
-  saving: boolean;
-  onUpload: (file: File) => void;
-  onUploadVariant: (variantId: string, file: File) => void;
-  uploading: boolean;
-}) {
+function ProductEditor({ product, onChange, onSave, onDelete, onCreateVariant, onOpenVariant, onUploadImages, saving, uploading }: { product: EditableProduct; onChange: (next: EditableProduct) => void; onSave: () => void; onDelete: () => void; onCreateVariant: () => void; onOpenVariant: (variant: EditableVariant) => void; onUploadImages: (files: File[]) => void; saving: boolean; uploading: boolean }) {
   const update = <K extends keyof EditableProduct>(field: K, value: EditableProduct[K]) => onChange({ ...product, [field]: value });
-  const updateVariant = (index: number, patch: Partial<EditableVariant>) => update("variants", product.variants.map((variant, itemIndex) => itemIndex === index ? { ...variant, ...patch } : variant));
-  const uploadInputId = `product-image-${product.id ?? "new"}`;
-  const nextVariantSortOrder = Math.max(0, ...product.variants.map((variant) => variant.sortOrder)) + 1;
-
-  return (
-    <div className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 pb-4">
-        <div><p className="text-xs font-bold tracking-[0.12em] text-[#9a2022]">EDITOR DE PRODUCTO</p><h2 className="mt-1 text-xl font-semibold tracking-tight text-slate-950 sm:text-2xl">{product.name || "Nuevo producto"}</h2></div>
-        <div className="flex items-center gap-2"><button type="button" onClick={onSave} disabled={saving} className="min-h-11 rounded-xl bg-[#8f1519] px-5 text-sm font-bold text-white shadow-sm transition hover:bg-[#741115] disabled:cursor-wait disabled:opacity-60">{saving ? "Guardando…" : "Guardar cambios"}</button>{product.id && <button type="button" onClick={() => { if (window.confirm(`¿Eliminar definitivamente “${product.name}” y todas sus variantes?`)) onDelete(); }} className="min-h-11 rounded-xl border border-rose-300 px-4 text-sm font-bold text-rose-700 transition hover:bg-rose-50">Eliminar producto</button>}</div>
-      </div>
-
-      <section className="grid gap-3 sm:grid-cols-2">
-        <Toggle checked={product.published} onChange={(value) => update("published", value)} label="Publicado" description="Visible para visitantes del catálogo." />
-        <Toggle checked={product.featured} onChange={(value) => update("featured", value)} label="Destacado" description="Aparece primero en colecciones destacadas." />
-      </section>
-
-      <div className="grid min-w-0 items-start gap-4 xl:grid-cols-[minmax(0,1fr)_20rem] xl:gap-5">
-        <div className="min-w-0 space-y-4">
-          <section className="rounded-2xl border border-slate-200 bg-slate-50 p-4 sm:p-5">
-            <div><h3 className="text-sm font-bold text-slate-950">Información comercial</h3><p className="mt-1 text-xs text-slate-500">Datos principales, precio y disponibilidad del producto.</p></div>
-            <div className="mt-3 grid gap-x-4 gap-y-3 sm:grid-cols-2">
-              <label><FieldLabel>Nombre</FieldLabel><TextInput value={product.name} onChange={(value) => update("name", value)} /></label>
-              <label><FieldLabel>Categoría</FieldLabel><TextInput value={product.category} onChange={(value) => update("category", value)} placeholder="Colchones" /></label>
-              <label><FieldLabel>Código del sistema futuro</FieldLabel><TextInput value={product.externalCode} onChange={(value) => update("externalCode", value)} placeholder="Opcional" /></label>
-              <label><FieldLabel>URL del producto</FieldLabel><TextInput value={product.slug} onChange={(value) => update("slug", value)} placeholder="Se genera desde el nombre" /></label>
-              <label><FieldLabel>Precio desde (Bs)</FieldLabel><TextInput type="number" value={product.priceFrom} onChange={(value) => update("priceFrom", value)} placeholder="Opcional" /></label>
-              <label><FieldLabel>Precio anterior (Bs)</FieldLabel><TextInput type="number" value={product.compareAtPriceFrom} onChange={(value) => update("compareAtPriceFrom", value)} placeholder="Opcional" /></label>
-              <label><FieldLabel>Disponibilidad</FieldLabel><select value={product.availability} onChange={(event) => update("availability", event.target.value as ProductAvailability)} className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-950 outline-none focus:border-[#8f1519] focus:ring-4 focus:ring-[#8f1519]/10">{AVAILABILITY_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label>
-              <label><FieldLabel>Orden de aparición</FieldLabel><TextInput type="number" value={product.sortOrder} onChange={(value) => update("sortOrder", value)} /></label>
-            </div>
-          </section>
-
-          <section className="rounded-2xl border border-slate-200 bg-white p-4 sm:p-5">
-            <div><h3 className="text-sm font-bold text-slate-950">Contenido del producto</h3><p className="mt-1 text-xs text-slate-500">Información que verá el cliente en la ficha pública.</p></div>
-            <label className="mt-3 block"><FieldLabel>Descripción breve</FieldLabel><textarea value={product.shortDescription} onChange={(event) => update("shortDescription", event.target.value)} rows={2} className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm leading-5 text-slate-950 outline-none focus:border-[#8f1519] focus:ring-4 focus:ring-[#8f1519]/10" /></label>
-            <label className="mt-3 block"><FieldLabel>Descripción completa</FieldLabel><textarea value={product.description} onChange={(event) => update("description", event.target.value)} rows={4} className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm leading-5 text-slate-950 outline-none focus:border-[#8f1519] focus:ring-4 focus:ring-[#8f1519]/10" /></label>
-            <label className="mt-3 block"><FieldLabel>Detalles técnicos</FieldLabel><textarea value={product.specificationsText} onChange={(event) => update("specificationsText", event.target.value)} placeholder="Un detalle por línea" rows={4} className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm leading-5 text-slate-950 outline-none focus:border-[#8f1519] focus:ring-4 focus:ring-[#8f1519]/10" /></label>
-          </section>
-
-          <section className="rounded-2xl border border-slate-200 bg-white p-4 sm:p-5">
-            <div className="flex items-center justify-between gap-3"><div><h3 className="text-sm font-bold text-slate-950">Variantes</h3><p className="mt-1 text-xs text-slate-500">Cada combinación reúne opción, color, código y una galería propia opcional.</p></div><button type="button" onClick={() => update("variants", [...product.variants, { externalCode: null, label: "Nueva variante", colorHex: null, price: null, compareAtPrice: null, availability: "available", active: true, sortOrder: nextVariantSortOrder, images: [] }])} className="rounded-lg border border-slate-300 px-3 py-2 text-xs font-bold text-slate-700 hover:border-slate-500">Añadir variante</button></div>
-            <div className="mt-3 space-y-3">
-              {product.variants.length === 0 && <p className="rounded-xl bg-slate-50 px-3 py-4 text-sm text-slate-500">Este producto aún no tiene variantes.</p>}
-              {product.variants.map((variant, index) => (
-                <div key={variant.id ?? `new-${index}`} className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-                  <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                    <label><FieldLabel>Opción</FieldLabel><TextInput value={variant.label} onChange={(value) => updateVariant(index, { label: value })} /></label>
-                    <label><FieldLabel>Código externo</FieldLabel><TextInput value={variant.externalCode ?? ""} onChange={(value) => updateVariant(index, { externalCode: value || null })} /></label>
-                    <label><FieldLabel>Precio (Bs, opcional)</FieldLabel><TextInput type="number" value={variant.price?.toString() ?? ""} onChange={(value) => updateVariant(index, { price: value === "" ? null : Number(value) })} /></label>
-                    <label><FieldLabel>Disponibilidad</FieldLabel><select value={variant.availability} onChange={(event) => updateVariant(index, { availability: event.target.value as ProductAvailability })} className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-950">{AVAILABILITY_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label>
-                  </div>
-                  <div className="mt-3 flex flex-wrap items-center gap-3"><label className="flex items-center gap-2 text-xs font-medium text-slate-700"><input type="checkbox" checked={variant.colorHex !== null} onChange={(event) => updateVariant(index, { colorHex: event.target.checked ? "#1c1917" : null })} className="accent-[#8f1519]" /> Mostrar punto de color</label>{variant.colorHex && <label className="relative size-9 cursor-pointer overflow-hidden rounded-full border border-slate-300" style={{ backgroundColor: variant.colorHex }} title="Cambiar color"><input type="color" value={variant.colorHex} onChange={(event) => updateVariant(index, { colorHex: normalizeColorHex(event.target.value) })} aria-label={`Cambiar color de la variante ${index + 1}`} className="absolute inset-0 size-full cursor-pointer opacity-0" /></label>}</div>
-                  <div className="mt-4 rounded-xl border border-slate-200 bg-white p-3"><div className="flex items-start justify-between gap-3"><div><h4 className="text-xs font-bold text-slate-900">Galería de esta variante</h4><p className="mt-1 text-xs text-slate-500">Opcional. Si queda vacía, se mostrarán las fotos generales del producto.</p></div>{variant.id ? <label htmlFor={`variant-image-${variant.id}`} className="cursor-pointer rounded-lg border border-[#8f1519]/35 px-3 py-2 text-xs font-bold text-[#8f1519] hover:bg-rose-50">{uploading ? "Subiendo…" : "Subir fotos"}<input id={`variant-image-${variant.id}`} type="file" accept="image/png,image/jpeg,image/webp" onChange={(event) => { const file = event.target.files?.[0]; if (file) onUploadVariant(variant.id!, file); event.currentTarget.value = ""; }} className="sr-only" disabled={uploading} /></label> : <span className="text-right text-xs leading-4 text-slate-500">Guarda la variante<br />para subir fotos</span>}</div>{variant.images.length > 0 && <div className="mt-3 grid grid-cols-3 gap-2">{variant.images.map((image, imageIndex) => <div key={image.id ?? image.path} className="relative aspect-square overflow-hidden rounded-lg bg-slate-100">{image.url ? <img src={image.url} alt={image.alt} className="size-full object-cover" /> : <div className="grid size-full place-items-center text-xs text-slate-500">Foto</div>}<button type="button" onClick={() => updateVariant(index, { images: variant.images.filter((_, itemIndex) => itemIndex !== imageIndex) })} aria-label={`Quitar foto ${imageIndex + 1} de variante`} className="absolute right-1 top-1 grid size-6 place-items-center rounded-full bg-white/95 text-sm font-bold text-rose-700 shadow-sm">×</button></div>)}</div>}</div>
-                  <div className="mt-3 flex items-center justify-between"><label className="flex items-center gap-2 text-xs font-medium text-slate-600"><input type="checkbox" checked={variant.active} onChange={(event) => updateVariant(index, { active: event.target.checked })} className="accent-[#8f1519]" /> Disponible para elegir</label><button type="button" onClick={() => update("variants", product.variants.filter((_, itemIndex) => itemIndex !== index))} className="text-xs font-bold text-rose-700">Quitar</button></div>
-                </div>
-              ))}
-            </div>
-          </section>
-        </div>
-
-        <aside className="min-w-0 xl:sticky xl:top-5">
-          <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
-            <div className="flex items-start justify-between gap-3"><div><h3 className="text-sm font-bold text-slate-950">Fotos del producto</h3><p className="mt-1 text-xs leading-4 text-slate-500">La primera foto será la portada del producto.</p></div>{product.id ? <label htmlFor={uploadInputId} className="shrink-0 cursor-pointer rounded-lg border border-[#8f1519]/35 px-3 py-2 text-xs font-bold text-[#8f1519] transition hover:border-[#8f1519] hover:bg-rose-50">{uploading ? "Subiendo…" : "Subir foto"}<input id={uploadInputId} type="file" accept="image/png,image/jpeg,image/webp" onChange={(event) => { const file = event.target.files?.[0]; if (file) onUpload(file); event.currentTarget.value = ""; }} className="sr-only" disabled={uploading} /></label> : <span className="text-right text-xs leading-4 text-slate-500">Guarda primero<br />para subir fotos</span>}</div>
-            {product.images.length === 0 ? product.id ? <label htmlFor={uploadInputId} className="mt-4 grid min-h-64 cursor-pointer place-items-center rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-5 text-center transition hover:border-[#8f1519]/60 hover:bg-rose-50/40"><span><span aria-hidden="true" className="mx-auto grid size-10 place-items-center rounded-full border border-[#8f1519]/25 bg-white text-lg font-semibold text-[#8f1519]">+</span><span className="mt-3 block text-sm font-semibold text-slate-700">Añade la portada del producto</span><span className="mt-1 block text-xs leading-4 text-slate-500">Haz clic aquí para seleccionar una imagen.</span></span></label> : <div className="mt-4 grid min-h-64 place-items-center rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-5 text-center text-sm leading-5 text-slate-500">Guarda el producto para poder subir su primera imagen.</div> : <div className="mt-4 grid grid-cols-2 gap-3">{product.images.map((image, index) => <div key={image.id ?? image.path} className={`overflow-hidden rounded-xl border border-slate-200 bg-white ${index === 0 ? "col-span-2" : ""}`}><div className={`${index === 0 ? "aspect-[4/3]" : "aspect-square"} relative bg-slate-100`}>{image.url ? <img src={image.url} alt={image.alt} className="h-full w-full object-cover" /> : <div className="grid h-full place-items-center text-xs text-slate-500">Cargando…</div>}{index === 0 && <span className="absolute left-2 top-2 rounded-md bg-slate-950/70 px-2 py-1 text-[11px] font-bold text-white">Portada</span>}</div><div className="border-t border-slate-100 p-2.5"><input value={image.alt} onChange={(event) => update("images", product.images.map((item, itemIndex) => itemIndex === index ? { ...item, alt: event.target.value } : item))} aria-label={`Descripción de la imagen ${index + 1}`} className="w-full rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs text-slate-700 outline-none focus:border-[#8f1519] focus:ring-2 focus:ring-[#8f1519]/10" /><button type="button" onClick={() => update("images", product.images.filter((_, itemIndex) => itemIndex !== index))} className="mt-2 text-xs font-bold text-rose-700 hover:text-rose-800">Quitar de la ficha</button></div></div>)}</div>}
-          </section>
-        </aside>
-      </div>
-    </div>
-  );
+  const previewUrl = product.slug || autoSlug(product.name);
+  return <div className="space-y-4"><div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 pb-4"><div><p className="text-xs font-bold tracking-[0.12em] text-[#9a2022]">PRODUCTO PRINCIPAL</p><h2 className="mt-1 text-xl font-semibold tracking-tight text-slate-950 sm:text-2xl">{product.name || "Nuevo producto"}</h2><p className="mt-1 text-xs text-slate-500">La información de esta ficha se comparte con todas sus variantes.</p></div><div className="flex items-center gap-2"><button type="button" onClick={onSave} disabled={saving} className="min-h-11 rounded-xl bg-[#8f1519] px-5 text-sm font-bold text-white shadow-sm transition hover:bg-[#741115] disabled:cursor-wait disabled:opacity-60">{saving ? "Guardando…" : "Guardar producto"}</button>{product.id && <button type="button" onClick={() => { if (window.confirm(`¿Eliminar definitivamente “${product.name}” y todas sus variantes?`)) onDelete(); }} className="min-h-11 rounded-xl border border-rose-300 px-4 text-sm font-bold text-rose-700 transition hover:bg-rose-50">Eliminar</button>}</div></div><section className="grid gap-3 sm:grid-cols-[1fr_auto]"><label className="flex cursor-pointer items-start gap-3 rounded-xl border border-slate-200 bg-white p-3"><input checked={product.published} onChange={(event) => update("published", event.target.checked)} type="checkbox" className="mt-0.5 size-4 accent-[#8f1519]" /><span><span className="block text-sm font-semibold text-slate-900">Publicado</span><span className="mt-0.5 block text-xs leading-4 text-slate-500">Visible para visitantes del catálogo.</span></span></label><div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-xs text-slate-500"><span className="font-semibold text-slate-700">URL automática</span><br />/{previewUrl}</div></section><section className="rounded-2xl border border-slate-200 bg-slate-50 p-4 sm:p-5"><div><h3 className="text-sm font-bold text-slate-950">Información del producto</h3><p className="mt-1 text-xs text-slate-500">Solo los datos esenciales. El precio es único y las variantes lo heredan.</p></div><div className="mt-4 grid gap-3 sm:grid-cols-3"><label><FieldLabel>Nombre</FieldLabel><TextInput value={product.name} onChange={(value) => update("name", value)} /></label><label><FieldLabel>Categoría</FieldLabel><TextInput value={product.category} onChange={(value) => update("category", value)} placeholder="Colchones" /></label><label><FieldLabel>Precio (Bs)</FieldLabel><TextInput type="number" value={product.priceFrom} onChange={(value) => update("priceFrom", value)} placeholder="Opcional" /></label></div><label className="mt-3 block"><FieldLabel>Descripción breve</FieldLabel><textarea value={product.shortDescription} onChange={(event) => update("shortDescription", event.target.value)} rows={2} className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm leading-5 text-slate-950 outline-none focus:border-[#8f1519] focus:ring-4 focus:ring-[#8f1519]/10" /></label><label className="mt-3 block"><FieldLabel>Detalles técnicos</FieldLabel><textarea value={product.specificationsText} onChange={(event) => update("specificationsText", event.target.value)} placeholder="Un detalle por línea" rows={4} className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm leading-5 text-slate-950 outline-none focus:border-[#8f1519] focus:ring-4 focus:ring-[#8f1519]/10" /></label></section><PhotoDropzone title="Fotos del producto" description="Estas fotos son la galería principal y también se usarán cuando una variante no tenga fotos propias." images={product.images} onUpload={onUploadImages} onRemove={(index) => update("images", product.images.filter((_, imageIndex) => imageIndex !== index))} disabledMessage={!product.id ? "Guarda primero el producto para poder subir sus tres fotos." : undefined} uploading={uploading} /><section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5"><div className="flex flex-wrap items-start justify-between gap-3"><div><h3 className="text-sm font-bold text-slate-950">Variantes</h3><p className="mt-1 max-w-2xl text-xs leading-4 text-slate-500">Crea una variante desde este producto. Solo cambiarás nombre o tamaño, color, código y fotos.</p></div><button type="button" onClick={onCreateVariant} disabled={!product.id} className="min-h-10 rounded-xl bg-[#8f1519] px-4 text-xs font-bold text-white disabled:cursor-not-allowed disabled:opacity-50">Crear variante</button></div>{!product.id && <p className="mt-3 text-xs text-slate-500">Guarda el producto principal antes de crear su primera variante.</p>}<div className="mt-4 grid gap-2">{product.variants.length === 0 ? <p className="rounded-xl bg-slate-50 px-3 py-4 text-sm text-slate-500">Aún no hay variantes. Para un colchón crea “1.5 plazas”, “2 plazas” y “2.5 plazas”.</p> : product.variants.map((variant) => <button key={variant.id ?? `${variant.label}-${variant.sortOrder}`} type="button" onClick={() => onOpenVariant(variant)} className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 px-3 py-3 text-left transition hover:border-[#8f1519]/45 hover:bg-rose-50"><span className="flex min-w-0 items-center gap-3"><span className="grid size-9 shrink-0 place-items-center rounded-full bg-slate-100 text-sm font-bold text-slate-600">{variant.label.slice(0, 1).toUpperCase()}</span><span className="min-w-0"><span className="block truncate text-sm font-bold text-slate-900">{variant.label}</span><span className="mt-0.5 block text-xs text-slate-500">{variant.images.length}/3 fotos · {variant.externalCode || "Sin código"}</span></span>{variant.colorHex && <span className="size-5 shrink-0 rounded-full border border-slate-300" style={{ backgroundColor: variant.colorHex }} aria-label="Tiene punto de color" />}</span><span className="text-xs font-bold text-[#8f1519]">Editar</span></button>)}</div></section></div>;
 }
 
-function CatalogHomeEditor({ home, onChange, onSave, saving }: { home: CatalogHomeSettings; onChange: (next: CatalogHomeSettings) => void; onSave: () => void; saving: boolean }) {
-  return <div className="max-w-2xl space-y-5"><div className="border-b border-slate-200 pb-5"><p className="text-xs font-bold tracking-[0.12em] text-[#9a2022]">PORTADA PÚBLICA</p><h2 className="mt-1 text-2xl font-semibold tracking-tight text-slate-950">Mensaje principal</h2><p className="mt-2 text-sm leading-5 text-slate-500">Este bloque aparece al inicio del catálogo público.</p></div><section className="rounded-2xl border border-slate-200 bg-slate-50 p-4 sm:p-5"><label className="block"><FieldLabel>Etiqueta</FieldLabel><TextInput value={home.eyebrow} onChange={(value) => onChange({ ...home, eyebrow: value })} /></label><label className="mt-4 block"><FieldLabel>Título</FieldLabel><TextInput value={home.title} onChange={(value) => onChange({ ...home, title: value })} /></label><label className="mt-4 block"><FieldLabel>Descripción</FieldLabel><textarea value={home.description} onChange={(event) => onChange({ ...home, description: event.target.value })} rows={4} className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm leading-5 text-slate-950 outline-none focus:border-[#8f1519] focus:ring-4 focus:ring-[#8f1519]/10" /></label><button type="button" onClick={onSave} disabled={saving} className="mt-5 min-h-11 rounded-xl bg-[#8f1519] px-5 text-sm font-bold text-white disabled:cursor-wait disabled:opacity-60">{saving ? "Guardando…" : "Guardar portada"}</button></section></div>;
+function VariantEditor({ product, variant, onChange, onBack, onSave, onDelete, onUploadImages, saving, uploading }: { product: EditableProduct; variant: EditableVariant; onChange: (next: EditableVariant) => void; onBack: () => void; onSave: () => void; onDelete: () => void; onUploadImages: (files: File[]) => void; saving: boolean; uploading: boolean }) {
+  const inheritedPrice = product.priceFrom.trim() ? `Bs ${product.priceFrom}` : "Sin precio";
+  return <div className="space-y-4"><button type="button" onClick={onBack} className="inline-flex items-center gap-2 text-sm font-bold text-[#8f1519] hover:text-[#741115]">← Volver al producto</button><div className="flex flex-wrap items-start justify-between gap-3 border-b border-slate-200 pb-4"><div><p className="text-xs font-bold tracking-[0.12em] text-[#9a2022]">VARIANTE</p><h2 className="mt-1 text-xl font-semibold tracking-tight text-slate-950 sm:text-2xl">{variant.id ? `Editar variante de ${product.name}` : `Nueva variante de ${product.name}`}</h2><p className="mt-1 text-xs text-slate-500">Solo configura lo que es diferente en esta versión.</p></div><div className="flex items-center gap-2"><button type="button" onClick={onSave} disabled={saving} className="min-h-11 rounded-xl bg-[#8f1519] px-5 text-sm font-bold text-white disabled:cursor-wait disabled:opacity-60">{saving ? "Guardando…" : "Guardar variante"}</button>{variant.id && <button type="button" onClick={() => { if (window.confirm(`¿Quitar la variante “${variant.label}”?`)) onDelete(); }} className="min-h-11 rounded-xl border border-rose-300 px-4 text-sm font-bold text-rose-700 hover:bg-rose-50">Quitar</button>}</div></div><section className="rounded-2xl border border-slate-200 bg-slate-50 p-4 sm:p-5"><div className="flex items-start gap-3"><span aria-hidden="true" className="grid size-7 shrink-0 place-items-center rounded-full border border-slate-300 bg-white text-xs font-bold text-slate-600">i</span><div><h3 className="text-sm font-bold text-slate-900">Datos heredados del producto principal</h3><p className="mt-1 text-xs leading-4 text-slate-500">Precio {inheritedPrice} · Categoría {product.category} · Descripción y detalles técnicos compartidos.</p></div></div></section><section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5"><div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,0.8fr)_auto]"><label><FieldLabel>Nombre / tamaño / modelo</FieldLabel><TextInput value={variant.label} onChange={(value) => onChange({ ...variant, label: value })} placeholder="Ej. 2 plazas o Café Touch 205" /></label><label><FieldLabel>Código externo</FieldLabel><TextInput value={variant.externalCode ?? ""} onChange={(value) => onChange({ ...variant, externalCode: value || null })} placeholder="Opcional" /></label><div><FieldLabel>Color</FieldLabel><div className="flex h-11 items-center gap-2"><label className="flex items-center gap-2 text-xs font-medium text-slate-700"><input type="checkbox" checked={variant.colorHex !== null} onChange={(event) => onChange({ ...variant, colorHex: event.target.checked ? "#1c1917" : null })} className="accent-[#8f1519]" /> Punto</label>{variant.colorHex && <label className="relative size-10 cursor-pointer overflow-hidden rounded-full border border-slate-300" style={{ backgroundColor: variant.colorHex }} title="Cambiar color"><input type="color" value={variant.colorHex} onChange={(event) => onChange({ ...variant, colorHex: normalizeColorHex(event.target.value) })} aria-label="Cambiar color de la variante" className="absolute inset-0 size-full cursor-pointer opacity-0" /></label>}</div></div></div><label className="mt-4 flex items-center gap-2 text-xs font-medium text-slate-600"><input type="checkbox" checked={variant.active} onChange={(event) => onChange({ ...variant, active: event.target.checked })} className="accent-[#8f1519]" /> Disponible para elegir</label></section><PhotoDropzone title="Fotos de esta variante" description="Opcionales. Si no subes fotos, el cliente verá las fotos del producto principal." images={variant.images} onUpload={onUploadImages} onRemove={(index) => onChange({ ...variant, images: variant.images.filter((_, imageIndex) => imageIndex !== index) })} disabledMessage={!variant.id ? "Guarda esta variante para poder subir sus tres fotos." : undefined} uploading={uploading} /></div>;
 }
+
+function CatalogHomeEditor({ home, onChange, onSave, saving }: { home: CatalogHomeSettings; onChange: (next: CatalogHomeSettings) => void; onSave: () => void; saving: boolean }) { return <div className="max-w-2xl space-y-5"><div className="border-b border-slate-200 pb-5"><p className="text-xs font-bold tracking-[0.12em] text-[#9a2022]">PORTADA PÚBLICA</p><h2 className="mt-1 text-2xl font-semibold tracking-tight text-slate-950">Mensaje principal</h2><p className="mt-2 text-sm leading-5 text-slate-500">Este bloque aparece al inicio del catálogo público.</p></div><section className="rounded-2xl border border-slate-200 bg-slate-50 p-4 sm:p-5"><label className="block"><FieldLabel>Etiqueta</FieldLabel><TextInput value={home.eyebrow} onChange={(value) => onChange({ ...home, eyebrow: value })} /></label><label className="mt-4 block"><FieldLabel>Título</FieldLabel><TextInput value={home.title} onChange={(value) => onChange({ ...home, title: value })} /></label><label className="mt-4 block"><FieldLabel>Descripción</FieldLabel><textarea value={home.description} onChange={(event) => onChange({ ...home, description: event.target.value })} rows={4} className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm leading-5 text-slate-950 outline-none focus:border-[#8f1519] focus:ring-4 focus:ring-[#8f1519]/10" /></label><button type="button" onClick={onSave} disabled={saving} className="mt-5 min-h-11 rounded-xl bg-[#8f1519] px-5 text-sm font-bold text-white disabled:cursor-wait disabled:opacity-60">{saving ? "Guardando…" : "Guardar portada"}</button></section></div>; }
 
 function CatalogAdminDashboard({ password, onLogout }: { password: string; onLogout: () => void }) {
   const [products, setProducts] = useState<CatalogProduct[]>([]);
   const [selected, setSelected] = useState<EditableProduct | null>(null);
+  const [variantDraft, setVariantDraft] = useState<EditableVariant | null>(null);
   const [home, setHome] = useState<CatalogHomeSettings | null>(null);
   const [section, setSection] = useState<"products" | "home">("products");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
-
-  const api = useCallback(async (path: string, init: RequestInit = {}) => {
-    const headers = new Headers(init.headers);
-    headers.set("X-Catalog-Admin-Key", password);
-    const response = await fetch(path, { ...init, headers });
-    const data = await response.json().catch(() => ({})) as { error?: string };
-    if (!response.ok) throw new Error(data.error || "No se pudo completar la operación");
-    return data;
-  }, [password]);
-
-  const load = useCallback(async (): Promise<CatalogProduct[]> => {
-    setLoading(true);
-    try {
-      const [productData, homeData] = await Promise.all([api("/api/catalog/admin/products"), api("/api/catalog/admin/home")]);
-      const nextProducts = (productData as { products: CatalogProduct[] }).products;
-      setProducts(nextProducts);
-      setHome((homeData as { home: CatalogHomeSettings }).home);
-      setSelected((current) => {
-        if (!current) return nextProducts[0] ? editableProduct(nextProducts[0]) : null;
-        if (!current.id) return current;
-        const refreshed = nextProducts.find((item) => item.id === current.id);
-        return refreshed ? editableProduct(refreshed) : nextProducts[0] ? editableProduct(nextProducts[0]) : null;
-      });
-      return nextProducts;
-    } catch (error) {
-      setNotice(error instanceof Error ? error.message : "No se pudo cargar el catálogo");
-      return [];
-    } finally {
-      setLoading(false);
-    }
-  }, [api]);
-
-  useEffect(() => {
-    const timer = window.setTimeout(() => void load(), 0);
-    return () => window.clearTimeout(timer);
-  }, [load]);
-
-  async function saveProduct() {
-    if (!selected) return;
-    setSaving(true);
-    setNotice(null);
-    try {
-      const endpoint = selected.id ? `/api/catalog/admin/products/${selected.id}` : "/api/catalog/admin/products";
-      const method = selected.id ? "PATCH" : "POST";
-      const result = await api(endpoint, { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(toPayload(selected)) }) as { productId?: string };
-      const refreshedProducts = await load();
-      if (!selected.id && result.productId) {
-        const product = refreshedProducts.find((item) => item.id === result.productId);
-        if (product) setSelected(editableProduct(product));
-      }
-      setNotice("Cambios guardados.");
-    } catch (error) {
-      setNotice(error instanceof Error ? error.message : "No se pudieron guardar los cambios");
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  async function uploadImage(file: File) {
-    if (!selected?.id) return;
-    setUploading(true);
-    setNotice(null);
-    try {
-      const form = new FormData();
-      form.set("productId", selected.id);
-      form.set("file", file);
-      const result = await api("/api/catalog/admin/images", { method: "POST", body: form }) as { path: string; url: string };
-      setSelected({ ...selected, images: [...selected.images, { path: result.path, url: result.url, alt: `${selected.name} - imagen ${selected.images.length + 1}`, sortOrder: selected.images.length + 1 }] });
-      setNotice("Foto subida. Guarda el producto para publicarla en la ficha.");
-    } catch (error) {
-      setNotice(error instanceof Error ? error.message : "No se pudo subir la imagen");
-    } finally {
-      setUploading(false);
-    }
-  }
-
-  async function uploadVariantImage(variantId: string, file: File) {
-    if (!selected?.id) return;
-    setUploading(true);
-    setNotice(null);
-    try {
-      const form = new FormData();
-      form.set("productId", selected.id);
-      form.set("variantId", variantId);
-      form.set("file", file);
-      const result = await api("/api/catalog/admin/variant-images", { method: "POST", body: form }) as { path: string; url: string };
-      setSelected((current) => current ? { ...current, variants: current.variants.map((variant) => variant.id === variantId ? { ...variant, images: [...variant.images, { path: result.path, url: result.url, alt: `${current.name} - variante - imagen ${variant.images.length + 1}`, sortOrder: variant.images.length + 1 }] } : variant) } : current);
-      setNotice("Foto de variante subida. Guarda el producto para publicarla.");
-    } catch (error) {
-      setNotice(error instanceof Error ? error.message : "No se pudo subir la foto de variante");
-    } finally {
-      setUploading(false);
-    }
-  }
-
-  async function deleteProduct() {
-    if (!selected?.id) return;
-    setSaving(true);
-    setNotice(null);
-    try {
-      await api(`/api/catalog/admin/products/${selected.id}`, { method: "DELETE" });
-      const refreshedProducts = await load();
-      setSelected(refreshedProducts[0] ? editableProduct(refreshedProducts[0]) : null);
-      setNotice("Producto eliminado.");
-    } catch (error) {
-      setNotice(error instanceof Error ? error.message : "No se pudo eliminar el producto");
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  async function saveHome() {
-    if (!home) return;
-    setSaving(true);
-    setNotice(null);
-    try {
-      await api("/api/catalog/admin/home", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...home, imagePath: null }) });
-      setNotice("Portada guardada.");
-    } catch (error) {
-      setNotice(error instanceof Error ? error.message : "No se pudo guardar la portada");
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  return (
-    <main className="min-h-dvh bg-[#f4f6f9] text-slate-900">
-      <header className="border-b border-slate-200 bg-white/95 px-4 py-2.5"><div className="mx-auto flex max-w-[1440px] items-center justify-between gap-4"><div className="flex items-baseline gap-2"><p className="text-xs font-bold tracking-[0.13em] text-[#9a2022]">TERRA</p><h1 className="text-sm font-semibold text-slate-700">Administrador de catálogo</h1></div><button type="button" onClick={onLogout} className="rounded-lg border border-slate-300 px-3 py-2 text-xs font-bold text-slate-700 transition hover:border-slate-500 hover:bg-slate-50">Salir</button></div></header>
-      <div className="mx-auto grid max-w-[1440px] gap-4 p-3 lg:grid-cols-[232px_minmax(0,1fr)] lg:p-4">
-        <aside className="self-start rounded-2xl border border-slate-200 bg-white p-2.5 shadow-sm lg:sticky lg:top-4"><button type="button" onClick={() => setSection("products")} className={`w-full rounded-xl px-3 py-2.5 text-left text-sm font-semibold ${section === "products" ? "bg-[#8f1519] text-white" : "text-slate-700 hover:bg-slate-100"}`}>Productos</button><button type="button" onClick={() => setSection("home")} className={`mt-1 w-full rounded-xl px-3 py-2.5 text-left text-sm font-semibold ${section === "home" ? "bg-[#8f1519] text-white" : "text-slate-700 hover:bg-slate-100"}`}>Portada pública</button>{section === "products" && <><div className="my-3 border-t border-slate-100" /><button type="button" onClick={() => { setSelected(blankProduct(products.length + 1)); setSection("products"); }} className="w-full rounded-xl border border-dashed border-[#8f1519]/40 px-3 py-2.5 text-left text-sm font-bold text-[#8f1519] transition hover:bg-rose-50">+ Crear producto</button><div className="mt-3 space-y-1">{products.map((product) => <button key={product.id} type="button" onClick={() => setSelected(editableProduct(product))} className={`w-full rounded-xl px-3 py-2.5 text-left ${selected?.id === product.id ? "bg-rose-50" : "hover:bg-slate-50"}`}><span className="block truncate text-sm font-semibold text-slate-900">{product.name}</span><span className="mt-0.5 block text-xs text-slate-500">{product.published ? "Publicado" : "Borrador"} · {availabilityLabel(product.availability)}</span></button>)}</div></>}</aside>
-        <section className="min-w-0 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
-          {notice && <p className="mb-5 rounded-xl bg-slate-100 px-3 py-2.5 text-sm text-slate-700">{notice}</p>}
-          {loading ? <div className="grid min-h-80 place-items-center text-sm text-slate-500">Cargando catálogo…</div> : section === "home" && home ? <CatalogHomeEditor home={home} onChange={setHome} onSave={() => void saveHome()} saving={saving} /> : selected ? <ProductEditor product={selected} onChange={setSelected} onSave={() => void saveProduct()} onDelete={() => void deleteProduct()} saving={saving} onUpload={(file) => void uploadImage(file)} onUploadVariant={(variantId, file) => void uploadVariantImage(variantId, file)} uploading={uploading} /> : <div className="grid min-h-80 place-items-center text-center"><div><h2 className="text-xl font-semibold text-slate-950">Aún no hay productos.</h2><p className="mt-2 text-sm text-slate-500">Crea el primero para comenzar a preparar el catálogo.</p></div></div>}
-        </section>
-      </div>
-    </main>
-  );
+  const api = useCallback(async (path: string, init: RequestInit = {}) => { const headers = new Headers(init.headers); headers.set("X-Catalog-Admin-Key", password); const response = await fetch(path, { ...init, headers }); const data = await response.json().catch(() => ({})) as { error?: string }; if (!response.ok) throw new Error(data.error || "No se pudo completar la operación"); return data; }, [password]);
+  const load = useCallback(async (): Promise<CatalogProduct[]> => { setLoading(true); try { const [productData, homeData] = await Promise.all([api("/api/catalog/admin/products"), api("/api/catalog/admin/home")]); const nextProducts = (productData as { products: CatalogProduct[] }).products; setProducts(nextProducts); setHome((homeData as { home: CatalogHomeSettings }).home); setSelected((current) => { if (!current) return nextProducts[0] ? editableProduct(nextProducts[0]) : null; if (!current.id) return current; const refreshed = nextProducts.find((item) => item.id === current.id); return refreshed ? editableProduct(refreshed) : nextProducts[0] ? editableProduct(nextProducts[0]) : null; }); return nextProducts; } catch (error) { setNotice(error instanceof Error ? error.message : "No se pudo cargar el catálogo"); return []; } finally { setLoading(false); } }, [api]);
+  useEffect(() => { const timer = window.setTimeout(() => void load(), 0); return () => window.clearTimeout(timer); }, [load]);
+  async function persistProduct(next: EditableProduct): Promise<EditableProduct> { const endpoint = next.id ? `/api/catalog/admin/products/${next.id}` : "/api/catalog/admin/products"; const method = next.id ? "PATCH" : "POST"; const result = await api(endpoint, { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(toPayload(next)) }) as { productId?: string }; const refreshedProducts = await load(); const savedId = next.id ?? result.productId; const saved = refreshedProducts.find((product) => product.id === savedId); if (!saved) throw new Error("El producto se guardó pero no se pudo recargar"); const editable = editableProduct(saved); setSelected(editable); return editable; }
+  async function saveProduct() { if (!selected) return; setSaving(true); setNotice(null); try { await persistProduct(selected); setNotice("Producto guardado."); } catch (error) { setNotice(error instanceof Error ? error.message : "No se pudo guardar el producto"); } finally { setSaving(false); } }
+  async function saveVariant() { if (!selected || !variantDraft) return; setSaving(true); setNotice(null); try { const isNew = !variantDraft.id; const next = { ...selected, variants: isNew ? [...selected.variants, variantDraft] : selected.variants.map((variant) => variant.id === variantDraft.id ? variantDraft : variant) }; const saved = await persistProduct(next); const savedVariant = saved.variants.find((variant) => variant.id === variantDraft.id || (isNew && variant.sortOrder === variantDraft.sortOrder)); if (!savedVariant) throw new Error("No se pudo encontrar la variante guardada"); setVariantDraft(savedVariant); setNotice(isNew ? "Variante creada. Ahora puedes subir sus fotos." : "Variante guardada."); } catch (error) { setNotice(error instanceof Error ? error.message : "No se pudo guardar la variante"); } finally { setSaving(false); } }
+  async function deleteProduct() { if (!selected?.id) return; setSaving(true); setNotice(null); try { await api(`/api/catalog/admin/products/${selected.id}`, { method: "DELETE" }); setVariantDraft(null); const refreshedProducts = await load(); setSelected(refreshedProducts[0] ? editableProduct(refreshedProducts[0]) : null); setNotice("Producto eliminado."); } catch (error) { setNotice(error instanceof Error ? error.message : "No se pudo eliminar el producto"); } finally { setSaving(false); } }
+  async function deleteVariant() { if (!selected || !variantDraft?.id) return; setSaving(true); setNotice(null); try { await persistProduct({ ...selected, variants: selected.variants.filter((variant) => variant.id !== variantDraft.id) }); setVariantDraft(null); setNotice("Variante quitada."); } catch (error) { setNotice(error instanceof Error ? error.message : "No se pudo quitar la variante"); } finally { setSaving(false); } }
+  async function uploadProductImages(files: File[]) { if (!selected?.id || files.length === 0) return; setUploading(true); setNotice(null); try { let current = selected; for (const file of files.slice(0, MAX_GALLERY_IMAGES - current.images.length)) { const form = new FormData(); form.set("productId", current.id!); form.set("file", file); const result = await api("/api/catalog/admin/images", { method: "POST", body: form }) as { path: string; url: string }; current = await persistProduct({ ...current, images: [...current.images, { path: result.path, url: result.url, alt: `${current.name} - imagen ${current.images.length + 1}`, sortOrder: current.images.length + 1 }] }); } setNotice("Fotos del producto guardadas."); } catch (error) { setNotice(error instanceof Error ? error.message : "No se pudieron subir las fotos"); } finally { setUploading(false); } }
+  async function uploadVariantImages(files: File[]) { if (!selected?.id || !variantDraft?.id || files.length === 0) return; setUploading(true); setNotice(null); try { let currentProduct = selected; let currentVariant = variantDraft; for (const file of files.slice(0, MAX_GALLERY_IMAGES - currentVariant.images.length)) { const form = new FormData(); form.set("productId", currentProduct.id!); form.set("variantId", currentVariant.id!); form.set("file", file); const result = await api("/api/catalog/admin/variant-images", { method: "POST", body: form }) as { path: string; url: string }; const withImage = { ...currentVariant, images: [...currentVariant.images, { path: result.path, url: result.url, alt: `${currentProduct.name} - ${currentVariant.label} - imagen ${currentVariant.images.length + 1}`, sortOrder: currentVariant.images.length + 1 }] }; currentProduct = await persistProduct({ ...currentProduct, variants: currentProduct.variants.map((variant) => variant.id === withImage.id ? withImage : variant) }); currentVariant = currentProduct.variants.find((variant) => variant.id === withImage.id) ?? withImage; } setVariantDraft(currentVariant); setNotice("Fotos de la variante guardadas."); } catch (error) { setNotice(error instanceof Error ? error.message : "No se pudieron subir las fotos de la variante"); } finally { setUploading(false); } }
+  async function saveHome() { if (!home) return; setSaving(true); setNotice(null); try { await api("/api/catalog/admin/home", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...home, imagePath: null }) }); setNotice("Portada guardada."); } catch (error) { setNotice(error instanceof Error ? error.message : "No se pudo guardar la portada"); } finally { setSaving(false); } }
+  return <main className="min-h-dvh bg-[#f4f6f9] text-slate-900"><header className="border-b border-slate-200 bg-white/95 px-4 py-2.5"><div className="mx-auto flex max-w-[1440px] items-center justify-between gap-4"><div className="flex items-baseline gap-2"><p className="text-xs font-bold tracking-[0.13em] text-[#9a2022]">TERRA</p><h1 className="text-sm font-semibold text-slate-700">Administrador de catálogo</h1></div><button type="button" onClick={onLogout} className="rounded-lg border border-slate-300 px-3 py-2 text-xs font-bold text-slate-700 transition hover:border-slate-500 hover:bg-slate-50">Salir</button></div></header><div className="mx-auto grid max-w-[1440px] gap-4 p-3 lg:grid-cols-[232px_minmax(0,1fr)] lg:p-4"><aside className="self-start rounded-2xl border border-slate-200 bg-white p-2.5 shadow-sm lg:sticky lg:top-4"><button type="button" onClick={() => { setSection("products"); setVariantDraft(null); }} className={`w-full rounded-xl px-3 py-2.5 text-left text-sm font-semibold ${section === "products" ? "bg-[#8f1519] text-white" : "text-slate-700 hover:bg-slate-100"}`}>Productos</button><button type="button" onClick={() => { setSection("home"); setVariantDraft(null); }} className={`mt-1 w-full rounded-xl px-3 py-2.5 text-left text-sm font-semibold ${section === "home" ? "bg-[#8f1519] text-white" : "text-slate-700 hover:bg-slate-100"}`}>Portada pública</button>{section === "products" && <><div className="my-3 border-t border-slate-100" /><button type="button" onClick={() => { setSelected(blankProduct(products.length + 1)); setVariantDraft(null); }} className="w-full rounded-xl border border-dashed border-[#8f1519]/40 px-3 py-2.5 text-left text-sm font-bold text-[#8f1519] transition hover:bg-rose-50">+ Crear producto</button><div className="mt-3 space-y-1">{products.map((product) => <button key={product.id} type="button" onClick={() => { setSelected(editableProduct(product)); setVariantDraft(null); }} className={`w-full rounded-xl px-3 py-2.5 text-left ${selected?.id === product.id && !variantDraft ? "bg-rose-50" : "hover:bg-slate-50"}`}><span className="block truncate text-sm font-semibold text-slate-900">{product.name}</span><span className="mt-0.5 block text-xs text-slate-500">{product.published ? "Publicado" : "Borrador"} · {availabilityLabel(product.availability)}</span></button>)}</div></>}</aside><section className="min-w-0 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">{notice && <p className="mb-5 rounded-xl bg-slate-100 px-3 py-2.5 text-sm text-slate-700">{notice}</p>}{loading ? <div className="grid min-h-80 place-items-center text-sm text-slate-500">Cargando catálogo…</div> : section === "home" && home ? <CatalogHomeEditor home={home} onChange={setHome} onSave={() => void saveHome()} saving={saving} /> : selected ? variantDraft ? <VariantEditor product={selected} variant={variantDraft} onChange={setVariantDraft} onBack={() => setVariantDraft(null)} onSave={() => void saveVariant()} onDelete={() => void deleteVariant()} onUploadImages={(files) => void uploadVariantImages(files)} saving={saving} uploading={uploading} /> : <ProductEditor product={selected} onChange={setSelected} onSave={() => void saveProduct()} onDelete={() => void deleteProduct()} onCreateVariant={() => setVariantDraft(blankVariant(selected))} onOpenVariant={(variant) => setVariantDraft({ ...variant, images: variant.images.map((image) => ({ ...image })) })} onUploadImages={(files) => void uploadProductImages(files)} saving={saving} uploading={uploading} /> : <div className="grid min-h-80 place-items-center text-center"><div><h2 className="text-xl font-semibold text-slate-950">Aún no hay productos.</h2><p className="mt-2 text-sm text-slate-500">Crea el primero para comenzar a preparar el catálogo.</p></div></div>}</section></div></main>;
 }
 
-export function CatalogAdmin() {
-  const [password, setPassword] = useState<string | null>(null);
-
-  if (!password) return <AdminLogin onAccess={setPassword} />;
-  return <CatalogAdminDashboard password={password} onLogout={() => setPassword(null)} />;
-}
+export function CatalogAdmin() { const [password, setPassword] = useState<string | null>(null); return password ? <CatalogAdminDashboard password={password} onLogout={() => setPassword(null)} /> : <AdminLogin onAccess={setPassword} />; }
