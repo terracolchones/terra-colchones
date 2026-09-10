@@ -6,6 +6,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { availabilityLabel } from "@/components/catalog/price";
+import { colorVariantHex } from "@/lib/catalog-storefront/color-variants";
 import type { CatalogHomeSettings, CatalogImage, CatalogProduct, CatalogVariant, ProductAvailability } from "@/lib/catalog-storefront/types";
 
 type EditableVariant = Omit<CatalogVariant, "id"> & { id?: string };
@@ -173,6 +174,9 @@ function ProductEditor({ product, onChange, onSave, saving, onUpload, uploading 
   const update = <K extends keyof EditableProduct>(field: K, value: EditableProduct[K]) => onChange({ ...product, [field]: value });
   const updateVariant = (index: number, patch: Partial<EditableVariant>) => update("variants", product.variants.map((variant, itemIndex) => itemIndex === index ? { ...variant, ...patch } : variant));
   const uploadInputId = `product-image-${product.id ?? "new"}`;
+  const optionVariants = product.variants.filter((variant) => !colorVariantHex(variant.label));
+  const colorVariants = product.variants.filter((variant) => colorVariantHex(variant.label));
+  const nextVariantSortOrder = Math.max(0, ...product.variants.map((variant) => variant.sortOrder)) + 1;
 
   return (
     <div className="space-y-4">
@@ -210,11 +214,11 @@ function ProductEditor({ product, onChange, onSave, saving, onUpload, uploading 
           </section>
 
           <section className="rounded-2xl border border-slate-200 bg-white p-4 sm:p-5">
-            <div className="flex items-center justify-between gap-3"><div><h3 className="text-sm font-bold text-slate-950">Variantes</h3><p className="mt-1 text-xs text-slate-500">Medidas, colores u opciones que el cliente puede elegir.</p></div><button type="button" onClick={() => update("variants", [...product.variants, { externalCode: null, label: "Nueva variante", price: null, compareAtPrice: null, availability: "available", active: true, sortOrder: product.variants.length + 1 }])} className="rounded-lg border border-slate-300 px-3 py-2 text-xs font-bold text-slate-700 hover:border-slate-500">Añadir</button></div>
+            <div className="flex items-center justify-between gap-3"><div><h3 className="text-sm font-bold text-slate-950">Variantes</h3><p className="mt-1 text-xs text-slate-500">Medidas u opciones que el cliente puede elegir.</p></div><button type="button" onClick={() => update("variants", [...product.variants, { externalCode: null, label: "Nueva variante", price: null, compareAtPrice: null, availability: "available", active: true, sortOrder: nextVariantSortOrder }])} className="rounded-lg border border-slate-300 px-3 py-2 text-xs font-bold text-slate-700 hover:border-slate-500">Añadir</button></div>
             <div className="mt-3 space-y-3">
-              {product.variants.length === 0 && <p className="rounded-xl bg-slate-50 px-3 py-4 text-sm text-slate-500">Este producto aún no tiene variantes.</p>}
+              {optionVariants.length === 0 && <p className="rounded-xl bg-slate-50 px-3 py-4 text-sm text-slate-500">Este producto aún no tiene variantes.</p>}
               {product.variants.map((variant, index) => (
-                <div key={variant.id ?? `new-${index}`} className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                !colorVariantHex(variant.label) && <div key={variant.id ?? `new-${index}`} className="rounded-xl border border-slate-200 bg-slate-50 p-3">
                   <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
                     <label><FieldLabel>Opción</FieldLabel><TextInput value={variant.label} onChange={(value) => updateVariant(index, { label: value })} /></label>
                     <label><FieldLabel>Precio (Bs)</FieldLabel><TextInput type="number" value={variant.price?.toString() ?? ""} onChange={(value) => updateVariant(index, { price: value === "" ? null : Number(value) })} /></label>
@@ -224,6 +228,18 @@ function ProductEditor({ product, onChange, onSave, saving, onUpload, uploading 
                   <div className="mt-3 flex items-center justify-between"><label className="flex items-center gap-2 text-xs font-medium text-slate-600"><input type="checkbox" checked={variant.active} onChange={(event) => updateVariant(index, { active: event.target.checked })} className="accent-[#8f1519]" /> Disponible para elegir</label><button type="button" onClick={() => update("variants", product.variants.filter((_, itemIndex) => itemIndex !== index))} className="text-xs font-bold text-rose-700">Quitar</button></div>
                 </div>
               ))}
+            </div>
+          </section>
+
+          <section className="rounded-2xl border border-slate-200 bg-white p-4 sm:p-5">
+            <div className="flex items-center justify-between gap-3"><div><h3 className="text-sm font-bold text-slate-950">Colores</h3><p className="mt-1 text-xs text-slate-500">Añade los puntos de color disponibles para este producto.</p></div><button type="button" onClick={() => update("variants", [...product.variants, { externalCode: null, label: "#1c1917", price: null, compareAtPrice: null, availability: "available", active: true, sortOrder: nextVariantSortOrder }])} className="rounded-lg border border-slate-300 px-3 py-2 text-xs font-bold text-slate-700 hover:border-slate-500">Añadir color</button></div>
+            <div className="mt-4 flex flex-wrap gap-3">
+              {colorVariants.length === 0 && <p className="text-sm text-slate-500">Todavía no hay colores.</p>}
+              {product.variants.map((variant, index) => {
+                const color = colorVariantHex(variant.label);
+                if (!color) return null;
+                return <div key={variant.id ?? `color-${index}`} className="group relative grid size-12 place-items-center rounded-full border border-slate-300 bg-white shadow-sm"><label className="relative size-9 cursor-pointer overflow-hidden rounded-full border border-slate-300/70" style={{ backgroundColor: color }} title="Cambiar color"><input type="color" value={color} onChange={(event) => updateVariant(index, { label: event.target.value.toLowerCase() })} aria-label={`Cambiar color ${index + 1}`} className="absolute inset-0 size-full cursor-pointer opacity-0" /></label><button type="button" onClick={() => update("variants", product.variants.filter((_, itemIndex) => itemIndex !== index))} aria-label={`Quitar color ${index + 1}`} className="absolute -right-1 -top-1 hidden size-5 place-items-center rounded-full bg-rose-700 text-xs font-bold leading-none text-white shadow-sm group-hover:grid focus:grid">×</button></div>;
+              })}
             </div>
           </section>
         </div>
