@@ -42,6 +42,9 @@ y se habilita `RAG_SEMANTIC_SEARCH_ENABLED=true` en el servicio del agente.
 Esta activación se hace después de verificar la migración y el worker; no forma
 parte de un despliegue de código normal.
 
+El programador invoca el worker con una clave secreta gestionada por Supabase;
+esa credencial no se replica en código, variables manuales ni documentación.
+
 ## Flujo de conversación
 
 Las acciones transaccionales (código de pedido, GPS, QR, imagen de comprobante)
