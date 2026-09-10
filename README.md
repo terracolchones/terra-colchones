@@ -153,10 +153,24 @@ La aplicación devuelve el `hub.challenge` como `text/plain`, tal como exige Met
 - Cada mensaje se deduplica por su `wa_message_id` antes de llamar a OpenAI o responder a WhatsApp.
 - Los primeros mensajes, saludos y solicitudes de compra reciben un CTA a `CATALOG_PUBLIC_URL` o, por compatibilidad, a `/catalogo` dentro de `PUBLIC_APP_URL`; no existe checkout web heredado.
 - Todos los datos locales se guardan en `data/messages.db` con SQLite y modo WAL.
-- En modo **IA**, se envían los últimos 20 mensajes a la [Responses API](https://developers.openai.com/api/reference/responses/create) con el prompt de `src/lib/system-prompt.ts`. Las respuestas se solicitan con `store: false`.
+- En modo **IA**, se envían los últimos 20 mensajes a la [Responses API](https://developers.openai.com/api/reference/responses/create) con el prompt de `src/lib/system-prompt.ts`. Antes de responder, recupera productos publicados vigentes de Supabase y secciones pertinentes de `docs/rag/base-conocimiento-terra.md`; las respuestas se solicitan con `store: false`.
 - En modo **HUMANO**, el dashboard envía el texto directamente a Graph API y conserva un mensaje con icono de error si el envío falla.
 
 Personaliza el comportamiento del asistente en [src/lib/system-prompt.ts](src/lib/system-prompt.ts).
+
+## RAG comercial
+
+El RAG actual está diseñado para un catálogo pequeño y cambiante: consulta el
+catálogo publicado en Supabase en cada respuesta para precio, disponibilidad y
+variantes, y recupera secciones relevantes de
+`docs/rag/base-conocimiento-terra.md` para políticas y preguntas frecuentes.
+No indexa conversaciones, teléfonos, comprobantes, ubicaciones ni secretos.
+
+El documento de conocimiento debe viajar con cada despliegue. Actualiza sus
+datos comerciales aprobados junto con el catálogo; si una respuesta no cuenta
+con evidencia recuperada, el agente deriva a un asesor. Cuando el corpus crezca
+con fichas extensas o PDFs, se puede sustituir la recuperación textual por
+pgvector/embeddings sin cambiar el flujo de WhatsApp.
 
 ## Límite de 24 horas de WhatsApp
 
@@ -167,6 +181,7 @@ Las plantillas preaprobadas de WhatsApp quedan fuera del alcance de esta versió
 ## Desarrollo y comprobaciones
 
 ```bash
+npm test
 npx tsc --noEmit
 npm run build
 npm run dev

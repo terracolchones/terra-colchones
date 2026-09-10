@@ -17,7 +17,7 @@ garantías, promociones ni políticas.
 
 ## Empresa
 
-- Nombre comercial: Importadora Terra.
+- Nombre comercial: Terra.
 - Canales de atención: catálogo web y WhatsApp.
 - Cobertura confirmada: entregas en Santa Cruz y envíos a Bolivia.
 
