@@ -1,4 +1,5 @@
 import type { CatalogProduct, CatalogVariant } from "../catalog-storefront/types";
+import { isColorVariant } from "../catalog-storefront/color-variants";
 
 export interface KnowledgeChunk {
   id: string;
@@ -144,7 +145,7 @@ function catalogSearchText(product: CatalogProduct): string {
     product.shortDescription,
     product.description,
     ...product.specifications,
-    ...product.variants.filter((variant) => variant.active).flatMap((variant) => [variant.label, variant.externalCode ?? ""]),
+    ...product.variants.filter((variant) => variant.active && !isColorVariant(variant)).flatMap((variant) => [variant.label, variant.externalCode ?? ""]),
   ].join(" ");
 }
 
@@ -174,7 +175,7 @@ function formatCatalogProduct(product: CatalogProduct, variant: CatalogVariant |
   if (product.description) lines.push(`Descripción: ${product.description}`);
   if (product.specifications.length > 0) lines.push(`Especificaciones: ${product.specifications.join("; ")}`);
 
-  const activeVariants = product.variants.filter((item) => item.active);
+  const activeVariants = product.variants.filter((item) => item.active && !isColorVariant(item));
   if (activeVariants.length > 0) {
     const labels = activeVariants.map((item) => {
       const variantPrice = formatPrice(item.price);

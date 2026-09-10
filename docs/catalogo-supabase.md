@@ -13,3 +13,11 @@ El SQL crea cuatro fichas en borrador. No se muestran al público hasta que el d
 ## Preparación para el sistema comercial
 
 Cada producto y variante incluye `external_code`. Déjalo vacío durante la carga manual o escribe el código existente si ya está disponible. La futura integración usará ese campo para sincronizar nombre, precio, stock y variantes, mientras las fotos y el contenido comercial permanecen en el catálogo.
+
+## Colores como puntos
+
+Desde el editor de un producto, la sección **Colores** añade puntos de color
+sin nombres visibles en la ficha pública. Esta versión no requiere una migración
+adicional: cada punto se guarda internamente como una variante activa con un
+código hexadecimal (`#rrggbb`), separado automáticamente de las medidas.
+No utilices esos códigos como `external_code`; el panel los gestiona al guardar.

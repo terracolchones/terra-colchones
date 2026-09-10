@@ -7,6 +7,7 @@ import Link from "next/link";
 import { useMemo, useState } from "react";
 import { availabilityLabel, formatBolivianos } from "@/components/catalog/price";
 import { ProductVisual } from "@/components/catalog/ProductVisual";
+import { colorVariantHex, isColorVariant } from "@/lib/catalog-storefront/color-variants";
 import type { CatalogProduct } from "@/lib/catalog-storefront/types";
 import { buildOrderConfirmationWhatsAppUrl } from "@/lib/catalog-storefront/whatsapp";
 
@@ -16,43 +17,22 @@ interface ProductDetailProps {
   checkoutToken: string | null;
 }
 
-const COLOR_SWATCHES: Array<{ names: string[]; value: string }> = [
-  { names: ["blanco", "white"], value: "#f8fafc" },
-  { names: ["negro", "black"], value: "#1c1917" },
-  { names: ["gris", "plomo", "gray", "grey"], value: "#9ca3af" },
-  { names: ["beige", "crema", "cream"], value: "#d6b983" },
-  { names: ["marron", "cafe", "chocolate", "tabaco", "brown"], value: "#75452f" },
-  { names: ["rojo", "vino", "bordo", "red"], value: "#9a2022" },
-  { names: ["azul", "blue"], value: "#3269a8" },
-  { names: ["verde", "green"], value: "#3f7d4e" },
-  { names: ["amarillo", "yellow"], value: "#d4a017" },
-  { names: ["naranja", "orange"], value: "#dc7623" },
-  { names: ["rosa", "pink"], value: "#db6d94" },
-];
-
-function colorForVariantLabel(label: string): string | null {
-  const normalized = label
-    .normalize("NFD")
-    .replace(/\p{Diacritic}/gu, "")
-    .toLocaleLowerCase("es");
-  return COLOR_SWATCHES.find(({ names }) => names.some((name) => new RegExp(`(^|\\s)${name}(\\s|$)`).test(normalized)))?.value ?? null;
-}
-
 export function ProductDetail({ product, whatsAppPhone, checkoutToken }: ProductDetailProps) {
   const activeVariants = useMemo(() => product.variants.filter((variant) => variant.active), [product.variants]);
-  const [selectedVariantId, setSelectedVariantId] = useState(activeVariants[0]?.id ?? null);
+  const optionVariants = activeVariants.filter((variant) => !isColorVariant(variant));
+  const colorVariants = activeVariants.filter(isColorVariant);
+  const [selectedVariantId, setSelectedVariantId] = useState(optionVariants[0]?.id ?? null);
+  const [selectedColorVariantId, setSelectedColorVariantId] = useState(colorVariants[0]?.id ?? null);
   const [activeImage, setActiveImage] = useState(0);
   const [orderReadyToConfirm, setOrderReadyToConfirm] = useState(false);
   const [confirmingOrder, setConfirmingOrder] = useState(false);
   const [orderError, setOrderError] = useState<string | null>(null);
-  const selectedVariant = activeVariants.find((variant) => variant.id === selectedVariantId) ?? null;
+  const selectedVariant = optionVariants.find((variant) => variant.id === selectedVariantId) ?? null;
+  const selectedColorVariant = colorVariants.find((variant) => variant.id === selectedColorVariantId) ?? null;
   const price = selectedVariant?.price ?? product.priceFrom;
   const compareAtPrice = selectedVariant?.compareAtPrice ?? product.compareAtPriceFrom;
   const currentAvailability = selectedVariant?.availability ?? product.availability;
   const activeImageUrl = product.images[activeImage]?.url ?? product.images[0]?.url ?? null;
-  const variantColors = activeVariants.map((variant) => colorForVariantLabel(variant.label));
-  const hasOnlyColorVariants = activeVariants.length > 0 && variantColors.every((color) => color !== null);
-
   async function confirmOrder(): Promise<void> {
     if (confirmingOrder || !whatsAppPhone) return;
     setConfirmingOrder(true);
@@ -64,6 +44,7 @@ export function ProductDetail({ product, whatsAppPhone, checkoutToken }: Product
         body: JSON.stringify({
           productSlug: product.slug,
           variantId: selectedVariant?.id ?? null,
+          colorVariantId: selectedColorVariant?.id ?? null,
           checkoutToken,
         }),
       });
@@ -144,38 +125,15 @@ export function ProductDetail({ product, whatsAppPhone, checkoutToken }: Product
             {availabilityLabel(currentAvailability)}
           </div>
 
-          {activeVariants.length > 0 && (
+          {optionVariants.length > 0 && (
             <section className="mt-5 border-t border-stone-200 pt-5" aria-labelledby="variante-heading">
               <div className="flex items-baseline justify-between gap-4">
-                <h2 id="variante-heading" className="text-sm font-bold text-stone-950">{hasOnlyColorVariants ? "Elige un color" : "Elige una opción"}</h2>
+                <h2 id="variante-heading" className="text-sm font-bold text-stone-950">Elige una opción</h2>
                 {selectedVariant && <span className="truncate text-xs text-stone-500">{selectedVariant.label}</span>}
               </div>
 
-              {hasOnlyColorVariants ? (
-                <div className="mt-3 flex flex-wrap gap-2.5" role="group" aria-label="Colores disponibles">
-                  {activeVariants.map((variant, index) => {
-                    const selected = selectedVariantId === variant.id;
-                    return (
-                      <button
-                        key={variant.id}
-                        type="button"
-                        aria-label={variant.label}
-                        aria-pressed={selected}
-                        title={variant.label}
-                        onClick={() => {
-                          setSelectedVariantId(variant.id);
-                          resetOrderConfirmation();
-                        }}
-                        className={`grid size-10 place-items-center rounded-full border transition focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#8f1519] ${selected ? "border-stone-950 bg-white" : "border-transparent bg-stone-100 hover:border-stone-300"}`}
-                      >
-                        <span className="size-7 rounded-full border border-stone-300/60" style={{ backgroundColor: variantColors[index] ?? undefined }} aria-hidden="true" />
-                      </button>
-                    );
-                  })}
-                </div>
-              ) : (
-                <div className="mt-3 flex flex-wrap gap-2">
-                  {activeVariants.map((variant) => {
+              <div className="mt-3 flex flex-wrap gap-2">
+                  {optionVariants.map((variant) => {
                     const selected = selectedVariantId === variant.id;
                     return (
                       <button
@@ -192,8 +150,21 @@ export function ProductDetail({ product, whatsAppPhone, checkoutToken }: Product
                       </button>
                     );
                   })}
-                </div>
-              )}
+              </div>
+            </section>
+          )}
+
+          {colorVariants.length > 0 && (
+            <section className="mt-5 border-t border-stone-200 pt-5" aria-labelledby="color-heading">
+              <h2 id="color-heading" className="sr-only">Elige un color</h2>
+              <div className="flex flex-wrap gap-2.5" role="group" aria-label="Colores disponibles">
+                {colorVariants.map((variant, index) => {
+                  const selected = selectedColorVariantId === variant.id;
+                  const color = colorVariantHex(variant.label);
+                  if (!color) return null;
+                  return <button key={variant.id} type="button" aria-label={`Color ${index + 1}`} aria-pressed={selected} onClick={() => { setSelectedColorVariantId(variant.id); resetOrderConfirmation(); }} className={`grid size-10 place-items-center rounded-full border transition focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#8f1519] ${selected ? "border-stone-950 bg-white" : "border-transparent bg-stone-100 hover:border-stone-300"}`}><span className="size-7 rounded-full border border-stone-300/60" style={{ backgroundColor: color }} aria-hidden="true" /></button>;
+                })}
+              </div>
             </section>
           )}
           <div className="mt-7 hidden border-t border-stone-200 pt-5 lg:block">
