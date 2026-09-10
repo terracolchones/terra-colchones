@@ -80,6 +80,7 @@ Antes del siguiente desarrollo se crearon estos puntos Git locales:
 | Agente | `codex/safety-before-order-flow-agent-c5a0672` | `c5a0672` |
 | Catálogo | `codex/safety-before-qr-recovery-catalog-e1083cd` | `e1083cd` |
 | Agente | `codex/safety-before-qr-recovery-agent-99a8441` | `99a8441` |
+| Catálogo | `codex/safety-before-desktop-layout-cabd77b` | `cabd77b` |
 
 Las ramas de trabajo son `codex/order-flow-catalog` y
 `codex/order-flow-agent`. Los cambios locales no confirmados ajenos a esta tarea
