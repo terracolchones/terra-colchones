@@ -99,6 +99,7 @@ Antes del siguiente desarrollo se crearon estos puntos Git locales:
 | Catálogo | `codex/safety-before-qr-recovery-catalog-e1083cd` | `e1083cd` |
 | Agente | `codex/safety-before-qr-recovery-agent-99a8441` | `99a8441` |
 | Agente | `codex/safety-before-rag-scale-agent-1f675ba` | `1f675baa1078b0f247dbd7016433d659723ba731` |
+| Catálogo | `codex/backup-catalog-storage-20260910` | `0f372a0` |
 
 Las ramas de trabajo son `codex/order-flow-catalog` y
 `codex/order-flow-agent`. Los cambios locales no confirmados ajenos a esta tarea
