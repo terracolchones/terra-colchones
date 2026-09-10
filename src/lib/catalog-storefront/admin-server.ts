@@ -3,12 +3,14 @@ import "server-only";
 import crypto from "node:crypto";
 import { NextResponse, type NextRequest } from "next/server";
 import { DEFAULT_CATALOG_HOME } from "@/lib/catalog-storefront/demo";
-import { CATALOG_BUCKET, getCatalogServerClient, getAdminCatalogProducts, isCatalogConfigured } from "@/lib/catalog-storefront/server";
+import { normalizeColorHex } from "@/lib/catalog-storefront/color-variants";
+import { CATALOG_BUCKET, catalogSchemaMissing, getCatalogServerClient, getAdminCatalogProducts, isCatalogConfigured } from "@/lib/catalog-storefront/server";
 import type { CatalogHomeSettings, ProductAvailability } from "@/lib/catalog-storefront/types";
 
 const VALID_AVAILABILITY = new Set<ProductAvailability>(["available", "out_of_stock", "coming_soon"]);
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const STORAGE_PATH_PATTERN = /^products\/[0-9a-f-]{36}\/[a-zA-Z0-9_-]{1,128}\.(png|jpe?g|webp)$/;
+const VARIANT_STORAGE_PATH_PATTERN = /^products\/[0-9a-f-]{36}\/variants\/[0-9a-f-]{36}\/[a-zA-Z0-9_-]{1,128}\.(png|jpe?g|webp)$/;
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
 
 export class CatalogRequestError extends Error {
@@ -109,11 +111,13 @@ interface ProductVariantInput {
   id: string | null;
   externalCode: string | null;
   label: string;
+  colorHex: string | null;
   price: number | null;
   compareAtPrice: number | null;
   availability: ProductAvailability;
   active: boolean;
   sortOrder: number;
+  images: ProductImageInput[];
 }
 
 interface ProductImageInput {
@@ -152,15 +156,30 @@ export function parseProductInput(payload: unknown): ProductInput {
     const variant = asRecord(item);
     const id = optionalText(variant.id, 36);
     if (id && !UUID_PATTERN.test(id)) throw new CatalogRequestError("El identificador de una variante no es válido");
+    const rawVariantImages = Array.isArray(variant.images) ? variant.images : [];
+    if (rawVariantImages.length > 12) throw new CatalogRequestError("Una variante puede tener hasta 12 fotos");
+    const colorValue = optionalText(variant.colorHex, 7);
+    const colorHex = normalizeColorHex(colorValue);
+    if (colorValue && !colorHex) throw new CatalogRequestError("El color de la variante no es válido");
+    const images = rawVariantImages.map((item, imageIndex) => {
+      const image = asRecord(item);
+      const imageId = optionalText(image.id, 36);
+      const path = requiredText(image.path, "La ruta de la foto de la variante", 255);
+      if (imageId && !UUID_PATTERN.test(imageId)) throw new CatalogRequestError("El identificador de una foto de variante no es válido");
+      if (!VARIANT_STORAGE_PATH_PATTERN.test(path)) throw new CatalogRequestError("La foto de variante debe provenir del panel de catálogo");
+      return { id: imageId, path, alt: optionalText(image.alt, 180) ?? `${name} - variante ${index + 1} - imagen ${imageIndex + 1}`, sortOrder: nonNegativeInteger(image.sortOrder, imageIndex + 1) };
+    });
     return {
       id,
       externalCode: optionalText(variant.externalCode, 120),
       label: requiredText(variant.label, "El nombre de la variante", 100),
+      colorHex,
       price: nonNegativePrice(variant.price),
       compareAtPrice: nonNegativePrice(variant.compareAtPrice),
       availability: productAvailability(variant.availability),
       active: variant.active !== false,
       sortOrder: nonNegativeInteger(variant.sortOrder, index + 1),
+      images,
     };
   });
   const images = rawImages.map((item, index) => {
@@ -208,6 +227,7 @@ async function replaceRelations(productId: string, input: ProductInput): Promise
     product_id: productId,
     external_code: variant.externalCode,
     label: variant.label,
+    color_hex: variant.colorHex,
     price: variant.price,
     compare_at_price: variant.compareAtPrice,
     availability: variant.availability,
@@ -216,13 +236,58 @@ async function replaceRelations(productId: string, input: ProductInput): Promise
   }));
   if (variants.length > 0) {
     const { error } = await client.from("catalog_variants").upsert(variants);
-    if (error) throw new Error(error.message);
+    if (error) {
+      const message = error.message || "";
+      const hasVariantExtensions = input.variants.some((variant) => variant.colorHex || variant.images.length > 0);
+      if (!message.includes("color_hex") || hasVariantExtensions) throw new Error(error.message);
+      const legacyVariants = variants.map((variant) => ({
+        id: variant.id,
+        product_id: variant.product_id,
+        external_code: variant.external_code,
+        label: variant.label,
+        price: variant.price,
+        compare_at_price: variant.compare_at_price,
+        availability: variant.availability,
+        active: variant.active,
+        sort_order: variant.sort_order,
+      }));
+      const { error: legacyError } = await client.from("catalog_variants").upsert(legacyVariants);
+      if (legacyError) throw new Error(legacyError.message);
+    }
   }
   const keptVariantIds = new Set(variants.map((variant) => variant.id));
   const removedVariantIds = (existingVariants.data ?? []).map((item) => String(item.id)).filter((id) => !keptVariantIds.has(id));
   if (removedVariantIds.length > 0) {
     const { error } = await client.from("catalog_variants").delete().in("id", removedVariantIds);
     if (error) throw new Error(error.message);
+  }
+
+  const variantImages = input.variants.flatMap((variant, index) => variant.images.map((image) => ({
+    id: image.id ?? crypto.randomUUID(),
+    variant_id: variants[index].id,
+    storage_path: image.path,
+    alt_text: image.alt,
+    sort_order: image.sortOrder,
+  })));
+  const existingVariantIds = (existingVariants.data ?? []).map((item) => String(item.id));
+  if (existingVariantIds.length > 0 || variantImages.length > 0) {
+    const existingVariantImages = existingVariantIds.length > 0
+      ? await client.from("catalog_variant_images").select("id").in("variant_id", existingVariantIds)
+      : { data: [], error: null };
+    if (existingVariantImages.error) {
+      if (!catalogSchemaMissing(existingVariantImages.error) || variantImages.length > 0) throw new Error(existingVariantImages.error.message);
+    } else {
+      if (variantImages.length > 0) {
+        const { error } = await client.from("catalog_variant_images").upsert(variantImages);
+        if (error) throw new Error(error.message);
+      }
+      const keptVariantImageIds = new Set(variantImages.map((image) => image.id));
+      const removedVariantImageIds = (existingVariantImages.data ?? []).map((item) => String(item.id)).filter((id) => !keptVariantImageIds.has(id));
+      if (removedVariantImageIds.length > 0) {
+        const { error } = await client.from("catalog_variant_images").delete().in("id", removedVariantImageIds);
+        if (error) throw new Error(error.message);
+      }
+    }
   }
 
   const images = input.images.map((image) => ({
@@ -311,6 +376,46 @@ export async function uploadCatalogImage(productId: string, file: File): Promise
   if (error) throw new Error(error.message);
   const { data } = getCatalogServerClient().storage.from(CATALOG_BUCKET).getPublicUrl(path);
   return { path, url: data.publicUrl };
+}
+
+export async function uploadCatalogVariantImage(productId: string, variantId: string, file: File): Promise<{ path: string; url: string }> {
+  if (!UUID_PATTERN.test(productId) || !UUID_PATTERN.test(variantId)) throw new CatalogRequestError("Guarda la variante antes de subir fotos");
+  if (file.size === 0 || file.size > MAX_IMAGE_BYTES) throw new CatalogRequestError("La imagen debe pesar menos de 5 MB");
+  const { data: variant, error: variantError } = await getCatalogServerClient().from("catalog_variants").select("id").eq("id", variantId).eq("product_id", productId).maybeSingle();
+  if (variantError || !variant) throw new CatalogRequestError("La variante no pertenece a este producto", 404);
+  const { error: schemaError } = await getCatalogServerClient().from("catalog_variant_images").select("id").eq("variant_id", variantId).limit(1);
+  if (schemaError) throw new CatalogRequestError("Falta activar la migración de galerías de variantes", 503);
+  const { mimeType, extension } = imageMimeType(file);
+  const path = `products/${productId}/variants/${variantId}/${crypto.randomUUID()}.${extension}`;
+  const bytes = Buffer.from(await file.arrayBuffer());
+  const { error } = await getCatalogServerClient().storage.from(CATALOG_BUCKET).upload(path, bytes, { contentType: mimeType, cacheControl: "31536000", upsert: false });
+  if (error) throw new Error(error.message);
+  const { data } = getCatalogServerClient().storage.from(CATALOG_BUCKET).getPublicUrl(path);
+  return { path, url: data.publicUrl };
+}
+
+export async function deleteCatalogProduct(productId: string): Promise<void> {
+  if (!UUID_PATTERN.test(productId)) throw new CatalogRequestError("El producto no es válido", 404);
+  const client = getCatalogServerClient();
+  const [{ data: productImages, error: productImagesError }, { data: variants, error: variantsError }] = await Promise.all([
+    client.from("catalog_product_images").select("storage_path").eq("product_id", productId),
+    client.from("catalog_variants").select("id").eq("product_id", productId),
+  ]);
+  if (productImagesError || variantsError) throw new Error(productImagesError?.message || variantsError?.message || "No se pudo preparar la eliminación");
+  const variantIds = (variants ?? []).map((variant) => String(variant.id));
+  let variantPaths: string[] = [];
+  if (variantIds.length > 0) {
+    const { data, error } = await client.from("catalog_variant_images").select("storage_path").in("variant_id", variantIds);
+    if (error && !catalogSchemaMissing(error)) throw new Error(error.message);
+    variantPaths = (data ?? []).map((image) => String(image.storage_path));
+  }
+  const { error } = await client.from("catalog_products").delete().eq("id", productId);
+  if (error) throw new Error(error.message);
+  const paths = [...(productImages ?? []).map((image) => String(image.storage_path)), ...variantPaths].filter(Boolean);
+  if (paths.length > 0) {
+    const { error: storageError } = await client.storage.from(CATALOG_BUCKET).remove(paths);
+    if (storageError) console.error("[catalog-admin] no se pudieron limpiar algunas fotos eliminadas:", storageError.message);
+  }
 }
 
 export async function getAdminHomeSettings(): Promise<CatalogHomeSettings> {

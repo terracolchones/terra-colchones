@@ -2,6 +2,7 @@ import "server-only";
 
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { DEFAULT_CATALOG_HOME, DEVELOPMENT_CATALOG_PREVIEW } from "@/lib/catalog-storefront/demo";
+import { normalizeColorHex } from "@/lib/catalog-storefront/color-variants";
 import { normalizeWhatsAppPhone } from "@/lib/catalog-storefront/whatsapp";
 import { getPhoneNumberInfo } from "@/lib/meta/client";
 import type {
@@ -94,9 +95,14 @@ function publicImageUrl(path: string): string {
   return getCatalogServerClient().storage.from(CATALOG_BUCKET).getPublicUrl(path).data.publicUrl;
 }
 
-function catalogSchemaMissing(error: unknown): boolean {
+export function catalogSchemaMissing(error: unknown): boolean {
   const message = error instanceof Error ? error.message : String(error);
   return message.includes("Could not find the table") || message.includes("relation \"catalog_");
+}
+
+function catalogVariantExtensionsMissing(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return catalogSchemaMissing(error) || message.includes("color_hex") || message.includes("catalog_variant_images");
 }
 
 function toImage(row: Record<string, unknown>): CatalogImage {
@@ -115,11 +121,13 @@ function toVariant(row: Record<string, unknown>): CatalogVariant {
     id: String(row.id),
     externalCode: typeof row.external_code === "string" ? row.external_code : null,
     label: typeof row.label === "string" ? row.label : "Variante",
+    colorHex: normalizeColorHex(typeof row.color_hex === "string" ? row.color_hex : null),
     price: price(row.price),
     compareAtPrice: price(row.compare_at_price),
     availability: availability(row.availability),
     active: row.active !== false,
     sortOrder: Number(row.sort_order) || 0,
+    images: [],
   };
 }
 
@@ -159,13 +167,56 @@ function toHome(row: Record<string, unknown> | null): CatalogHomeSettings {
   };
 }
 
-const productFields = "id, external_code, slug, name, category, short_description, description, specifications, price_from, compare_at_price_from, availability, published, featured, sort_order, catalog_variants(id, external_code, label, price, compare_at_price, availability, active, sort_order), catalog_product_images(id, storage_path, alt_text, sort_order)";
+const legacyProductFields = "id, external_code, slug, name, category, short_description, description, specifications, price_from, compare_at_price_from, availability, published, featured, sort_order, catalog_variants(id, external_code, label, price, compare_at_price, availability, active, sort_order), catalog_product_images(id, storage_path, alt_text, sort_order)";
+const productFields = "id, external_code, slug, name, category, short_description, description, specifications, price_from, compare_at_price_from, availability, published, featured, sort_order, catalog_variants(id, external_code, label, color_hex, price, compare_at_price, availability, active, sort_order), catalog_product_images(id, storage_path, alt_text, sort_order)";
+
+async function attachVariantImages(products: CatalogProduct[]): Promise<CatalogProduct[]> {
+  const variantIds = products.flatMap((product) => product.variants.map((variant) => variant.id));
+  if (variantIds.length === 0) return products;
+  const { data, error } = await getCatalogServerClient().from("catalog_variant_images").select("id, variant_id, storage_path, alt_text, sort_order").in("variant_id", variantIds);
+  if (error) {
+    if (catalogVariantExtensionsMissing(error)) return products;
+    throw new Error(error.message);
+  }
+  const byVariant = new Map<string, CatalogImage[]>();
+  for (const row of data ?? []) {
+    const item = row as Record<string, unknown>;
+    const variantId = typeof item.variant_id === "string" ? item.variant_id : "";
+    if (!variantId) continue;
+    byVariant.set(variantId, [...(byVariant.get(variantId) ?? []), toImage(item)]);
+  }
+  return products.map((product) => ({ ...product, variants: product.variants.map((variant) => ({ ...variant, images: (byVariant.get(variant.id) ?? []).sort((a, b) => a.sortOrder - b.sortOrder) })) }));
+}
+
+async function queryProductRows(publishedOnly: boolean): Promise<Record<string, unknown>[]> {
+  const select = async (fields: string) => {
+    const request = getCatalogServerClient().from("catalog_products").select(fields).order("sort_order", { ascending: true });
+    return publishedOnly ? await request.eq("published", true) : await request;
+  };
+  const extended = await select(productFields);
+  if (!extended.error) return (extended.data ?? []) as unknown as Record<string, unknown>[];
+  if (!catalogVariantExtensionsMissing(extended.error)) throw new Error(extended.error.message);
+  const legacy = await select(legacyProductFields);
+  if (legacy.error) throw new Error(legacy.error.message);
+  return (legacy.data ?? []) as unknown as Record<string, unknown>[];
+}
+
+async function querySingleProduct(column: "id" | "slug", value: string, publishedOnly: boolean): Promise<Record<string, unknown> | null> {
+  const select = async (fields: string) => {
+    let request = getCatalogServerClient().from("catalog_products").select(fields).eq(column, value);
+    if (publishedOnly) request = request.eq("published", true);
+    return await request.maybeSingle();
+  };
+  const extended = await select(productFields);
+  if (!extended.error) return extended.data as Record<string, unknown> | null;
+  if (!catalogVariantExtensionsMissing(extended.error)) throw new Error(extended.error.message);
+  const legacy = await select(legacyProductFields);
+  if (legacy.error) throw new Error(legacy.error.message);
+  return legacy.data as Record<string, unknown> | null;
+}
 
 async function queryProducts(publishedOnly: boolean): Promise<CatalogProduct[]> {
-  const request = getCatalogServerClient().from("catalog_products").select(productFields).order("sort_order", { ascending: true });
-  const { data, error } = publishedOnly ? await request.eq("published", true) : await request;
-  if (error) throw new Error(error.message);
-  return (data ?? []).map((item) => toProduct(item as Record<string, unknown>));
+  return attachVariantImages((await queryProductRows(publishedOnly)).map(toProduct));
 }
 
 export async function getCatalogSnapshot(): Promise<CatalogSnapshot> {
@@ -206,14 +257,8 @@ export async function getPublishedProductBySlug(slug: string): Promise<CatalogPr
     return process.env.NODE_ENV === "production" ? null : DEVELOPMENT_CATALOG_PREVIEW.find((product) => product.slug === slug) ?? null;
   }
   try {
-    const { data, error } = await getCatalogServerClient()
-      .from("catalog_products")
-      .select(productFields)
-      .eq("slug", slug)
-      .eq("published", true)
-      .maybeSingle();
-    if (error) throw new Error(error.message);
-    return data ? toProduct(data as Record<string, unknown>) : null;
+    const data = await querySingleProduct("slug", slug, true);
+    return data ? (await attachVariantImages([toProduct(data)]))[0] : null;
   } catch (error) {
     if (!catalogSchemaMissing(error)) console.error("[catalog] no se pudo leer un producto publicado:", error);
     return process.env.NODE_ENV === "production" ? null : DEVELOPMENT_CATALOG_PREVIEW.find((product) => product.slug === slug) ?? null;
@@ -223,14 +268,9 @@ export async function getPublishedProductBySlug(slug: string): Promise<CatalogPr
 export async function getProductForCatalogLead(productId: string, variantId: string | null): Promise<{ product: CatalogProduct; variant: CatalogVariant | null } | null> {
   if (!isCatalogConfigured()) return null;
   try {
-    const { data, error } = await getCatalogServerClient()
-      .from("catalog_products")
-      .select(productFields)
-      .eq("id", productId)
-      .eq("published", true)
-      .maybeSingle();
-    if (error || !data) return null;
-    const product = toProduct(data as Record<string, unknown>);
+    const data = await querySingleProduct("id", productId, true);
+    if (!data) return null;
+    const product = (await attachVariantImages([toProduct(data)]))[0];
     const variant = variantId ? product.variants.find((item) => item.id === variantId && item.active) ?? null : null;
     return { product, variant };
   } catch (error) {

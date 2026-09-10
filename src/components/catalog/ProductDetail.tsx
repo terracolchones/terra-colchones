@@ -7,7 +7,6 @@ import Link from "next/link";
 import { useMemo, useState } from "react";
 import { availabilityLabel, formatBolivianos } from "@/components/catalog/price";
 import { ProductVisual } from "@/components/catalog/ProductVisual";
-import { colorVariantHex, isColorVariant } from "@/lib/catalog-storefront/color-variants";
 import type { CatalogProduct } from "@/lib/catalog-storefront/types";
 import { buildOrderConfirmationWhatsAppUrl } from "@/lib/catalog-storefront/whatsapp";
 
@@ -19,20 +18,21 @@ interface ProductDetailProps {
 
 export function ProductDetail({ product, whatsAppPhone, checkoutToken }: ProductDetailProps) {
   const activeVariants = useMemo(() => product.variants.filter((variant) => variant.active), [product.variants]);
-  const optionVariants = activeVariants.filter((variant) => !isColorVariant(variant));
-  const colorVariants = activeVariants.filter(isColorVariant);
-  const [selectedVariantId, setSelectedVariantId] = useState(optionVariants[0]?.id ?? null);
-  const [selectedColorVariantId, setSelectedColorVariantId] = useState(colorVariants[0]?.id ?? null);
+  const optionLabels = [...new Set(activeVariants.map((variant) => variant.label))];
+  const [selectedOption, setSelectedOption] = useState<string | null>(optionLabels[0] ?? null);
+  const variantsForOption = activeVariants.filter((variant) => variant.label === selectedOption);
+  const [selectedVariantId, setSelectedVariantId] = useState<string | null>(variantsForOption[0]?.id ?? null);
   const [activeImage, setActiveImage] = useState(0);
   const [orderReadyToConfirm, setOrderReadyToConfirm] = useState(false);
   const [confirmingOrder, setConfirmingOrder] = useState(false);
   const [orderError, setOrderError] = useState<string | null>(null);
-  const selectedVariant = optionVariants.find((variant) => variant.id === selectedVariantId) ?? null;
-  const selectedColorVariant = colorVariants.find((variant) => variant.id === selectedColorVariantId) ?? null;
+  const selectedVariant = variantsForOption.find((variant) => variant.id === selectedVariantId) ?? variantsForOption[0] ?? null;
   const price = selectedVariant?.price ?? product.priceFrom;
   const compareAtPrice = selectedVariant?.compareAtPrice ?? product.compareAtPriceFrom;
   const currentAvailability = selectedVariant?.availability ?? product.availability;
-  const activeImageUrl = product.images[activeImage]?.url ?? product.images[0]?.url ?? null;
+  const galleryImages = selectedVariant?.images.length ? selectedVariant.images : product.images;
+  const imageIndex = Math.min(activeImage, Math.max(0, galleryImages.length - 1));
+  const activeImageUrl = galleryImages[imageIndex]?.url ?? null;
   async function confirmOrder(): Promise<void> {
     if (confirmingOrder || !whatsAppPhone) return;
     setConfirmingOrder(true);
@@ -44,7 +44,6 @@ export function ProductDetail({ product, whatsAppPhone, checkoutToken }: Product
         body: JSON.stringify({
           productSlug: product.slug,
           variantId: selectedVariant?.id ?? null,
-          colorVariantId: selectedColorVariant?.id ?? null,
           checkoutToken,
         }),
       });
@@ -88,15 +87,17 @@ export function ProductDetail({ product, whatsAppPhone, checkoutToken }: Product
         <div className="lg:mt-5 lg:grid lg:grid-cols-[minmax(0,1fr)_minmax(0,0.94fr)] lg:items-start lg:gap-12 xl:gap-16">
           <div className="min-w-0">
             <section className="relative h-[68svh] min-h-[20rem] max-h-[44rem] overflow-hidden bg-stone-100 sm:mx-auto sm:mt-4 sm:h-auto sm:min-h-0 sm:max-w-[31rem] sm:rounded-[1.65rem] lg:mx-0 lg:mt-0 lg:max-w-none lg:rounded-[1.5rem]">
-          <div className="h-full sm:h-auto sm:aspect-square">
-            <ProductVisual product={product} imageUrl={activeImageUrl} alt={product.images[activeImage]?.alt ?? product.name} />
-          </div>
+              <div className="flex h-full snap-x snap-mandatory overflow-x-auto scroll-smooth lg:hidden" onScroll={(event) => { const width = event.currentTarget.clientWidth; if (width) setActiveImage(Math.round(event.currentTarget.scrollLeft / width)); }}>
+                {(galleryImages.length > 0 ? galleryImages : [null]).map((image) => <div key={image?.id ?? "placeholder"} className="h-full w-full shrink-0 snap-center sm:aspect-square"><ProductVisual product={product} imageUrl={image?.url ?? null} alt={image?.alt ?? product.name} /></div>)}
+              </div>
+              <div className="hidden h-full sm:aspect-square lg:block"><ProductVisual product={product} imageUrl={activeImageUrl} alt={galleryImages[imageIndex]?.alt ?? product.name} /></div>
               <Link href={`/catalogo${checkoutToken ? `?checkout=${encodeURIComponent(checkoutToken)}` : ""}`} className="absolute left-4 top-4 grid size-11 place-items-center rounded-full bg-white/90 text-2xl text-stone-900 shadow-sm backdrop-blur transition hover:bg-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#8f1519] lg:hidden" aria-label="Volver al catálogo">‹</Link>
+              {galleryImages.length > 1 && <div className="absolute inset-x-0 bottom-4 flex justify-center gap-1.5 lg:hidden" aria-label="Posición en la galería">{galleryImages.map((image, index) => <span key={image.id} className={`size-2 rounded-full border border-white/70 shadow-sm ${imageIndex === index ? "bg-white" : "bg-white/50"}`} />)}</div>}
             </section>
 
-            {product.images.length > 1 && (
+            {galleryImages.length > 1 && (
               <div className="mt-3 hidden grid-cols-3 gap-3 lg:grid" aria-label="Galería de imágenes">
-                {product.images.map((image, index) => (
+                {galleryImages.map((image, index) => (
                   <button
                     key={image.id}
                     type="button"
@@ -125,7 +126,7 @@ export function ProductDetail({ product, whatsAppPhone, checkoutToken }: Product
             {availabilityLabel(currentAvailability)}
           </div>
 
-          {optionVariants.length > 0 && (
+          {optionLabels.length > 0 && (
             <section className="mt-5 border-t border-stone-200 pt-5" aria-labelledby="variante-heading">
               <div className="flex items-baseline justify-between gap-4">
                 <h2 id="variante-heading" className="text-sm font-bold text-stone-950">Elige una opción</h2>
@@ -133,20 +134,23 @@ export function ProductDetail({ product, whatsAppPhone, checkoutToken }: Product
               </div>
 
               <div className="mt-3 flex flex-wrap gap-2">
-                  {optionVariants.map((variant) => {
-                    const selected = selectedVariantId === variant.id;
+                  {optionLabels.map((label) => {
+                    const selected = selectedOption === label;
                     return (
                       <button
-                        key={variant.id}
+                        key={label}
                         type="button"
                         aria-pressed={selected}
                         onClick={() => {
-                          setSelectedVariantId(variant.id);
+                          const nextVariant = activeVariants.find((variant) => variant.label === label) ?? null;
+                          setSelectedOption(label);
+                          setSelectedVariantId(nextVariant?.id ?? null);
+                          setActiveImage(0);
                           resetOrderConfirmation();
                         }}
                         className={`inline-flex min-h-9 items-center rounded-full border px-3 text-sm font-semibold transition focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#8f1519] ${selected ? "border-stone-950 bg-stone-950 text-white" : "border-stone-200 bg-white text-stone-800 hover:border-stone-400"}`}
                       >
-                        {variant.label}
+                        {label}
                       </button>
                     );
                   })}
@@ -154,15 +158,13 @@ export function ProductDetail({ product, whatsAppPhone, checkoutToken }: Product
             </section>
           )}
 
-          {colorVariants.length > 0 && (
+          {variantsForOption.filter((variant) => variant.colorHex).length > 0 && (
             <section className="mt-5 border-t border-stone-200 pt-5" aria-labelledby="color-heading">
               <h2 id="color-heading" className="sr-only">Elige un color</h2>
               <div className="flex flex-wrap gap-2.5" role="group" aria-label="Colores disponibles">
-                {colorVariants.map((variant, index) => {
-                  const selected = selectedColorVariantId === variant.id;
-                  const color = colorVariantHex(variant.label);
-                  if (!color) return null;
-                  return <button key={variant.id} type="button" aria-label={`Color ${index + 1}`} aria-pressed={selected} onClick={() => { setSelectedColorVariantId(variant.id); resetOrderConfirmation(); }} className={`grid size-10 place-items-center rounded-full border transition focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#8f1519] ${selected ? "border-stone-950 bg-white" : "border-transparent bg-stone-100 hover:border-stone-300"}`}><span className="size-7 rounded-full border border-stone-300/60" style={{ backgroundColor: color }} aria-hidden="true" /></button>;
+                {variantsForOption.filter((variant) => variant.colorHex).map((variant, index) => {
+                  const selected = selectedVariant?.id === variant.id;
+                  return <button key={variant.id} type="button" aria-label={`Color ${index + 1}`} aria-pressed={selected} onClick={() => { setSelectedVariantId(variant.id); setActiveImage(0); resetOrderConfirmation(); }} className={`grid size-10 place-items-center rounded-full border transition focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#8f1519] ${selected ? "border-stone-950 bg-white" : "border-transparent bg-stone-100 hover:border-stone-300"}`}><span className="size-7 rounded-full border border-stone-300/60" style={{ backgroundColor: variant.colorHex ?? undefined }} aria-hidden="true" /></button>;
                 })}
               </div>
             </section>
@@ -177,22 +179,6 @@ export function ProductDetail({ product, whatsAppPhone, checkoutToken }: Product
         </div>
 
         <article className="mx-5 mt-8 border-t border-stone-200 pb-6 pt-6 sm:mx-0 sm:mt-7 sm:px-5 lg:mx-0 lg:mt-14 lg:px-0 lg:pb-0 lg:pt-9">
-          {product.images.length > 1 && (
-            <div className="flex gap-2 overflow-x-auto pb-1 lg:hidden" aria-label="Galería de imágenes">
-              {product.images.map((image, index) => (
-                <button
-                  key={image.id}
-                  type="button"
-                  aria-label={`Ver imagen ${index + 1}`}
-                  aria-pressed={activeImage === index}
-                  onClick={() => setActiveImage(index)}
-                  className={`size-14 shrink-0 overflow-hidden rounded-xl border-2 bg-stone-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#8f1519] ${activeImage === index ? "border-[#8f1519]" : "border-transparent"}`}
-                >
-                  <img src={image.url} alt="" className="h-full w-full object-cover" />
-                </button>
-              ))}
-            </div>
-          )}
           <div className="mt-2 inline-flex items-center gap-2 rounded-full bg-stone-100 px-2.5 py-1 text-[11px] font-semibold text-stone-700 sm:mt-3 sm:px-3 sm:py-1.5 sm:text-xs lg:hidden">
             <span className={`size-2 rounded-full ${currentAvailability === "available" ? "bg-emerald-500" : currentAvailability === "out_of_stock" ? "bg-stone-400" : "bg-amber-400"}`} aria-hidden="true" />
             {availabilityLabel(currentAvailability)}

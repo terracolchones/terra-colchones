@@ -1,5 +1,4 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { colorVariantHex, isColorVariant } from "@/lib/catalog-storefront/color-variants";
 import { getPublishedProductBySlug } from "@/lib/catalog-storefront/server";
 
 export const dynamic = "force-dynamic";
@@ -8,7 +7,6 @@ export const runtime = "nodejs";
 interface CatalogOrderRequest {
   productSlug?: unknown;
   variantId?: unknown;
-  colorVariantId?: unknown;
   checkoutToken?: unknown;
 }
 
@@ -35,8 +33,7 @@ export async function POST(request: NextRequest) {
 
   const slug = typeof payload.productSlug === "string" ? payload.productSlug.trim() : "";
   const variantId = typeof payload.variantId === "string" ? payload.variantId.trim() : null;
-  const colorVariantId = typeof payload.colorVariantId === "string" ? payload.colorVariantId.trim() : null;
-  if (!slug || slug.length > 160 || (variantId !== null && variantId.length > 128) || (colorVariantId !== null && colorVariantId.length > 128)) {
+  if (!slug || slug.length > 160 || (variantId !== null && variantId.length > 128)) {
     return NextResponse.json({ error: "Producto inválido" }, { status: 400 });
   }
 
@@ -44,18 +41,12 @@ export async function POST(request: NextRequest) {
   if (!product || product.availability !== "available") {
     return NextResponse.json({ error: "Este producto ya no está disponible" }, { status: 409 });
   }
-  const variant = variantId ? product.variants.find((item) => item.id === variantId && item.active && !isColorVariant(item)) ?? null : null;
+  const variant = variantId ? product.variants.find((item) => item.id === variantId && item.active) ?? null : null;
   if (variantId && !variant) return NextResponse.json({ error: "La opción seleccionada ya no está disponible" }, { status: 409 });
   if (variant && variant.availability !== "available") {
     return NextResponse.json({ error: "La opción seleccionada ya no está disponible" }, { status: 409 });
   }
-  const colorVariant = colorVariantId ? product.variants.find((item) => item.id === colorVariantId && item.active && isColorVariant(item)) ?? null : null;
-  if (colorVariantId && !colorVariant) return NextResponse.json({ error: "El color seleccionado ya no está disponible" }, { status: 409 });
-  if (colorVariant && colorVariant.availability !== "available") {
-    return NextResponse.json({ error: "El color seleccionado ya no está disponible" }, { status: 409 });
-  }
-  const colorHex = colorVariant ? colorVariantHex(colorVariant.label) : null;
-  const selectionLabel = [variant?.label ?? null, colorHex].filter((item): item is string => Boolean(item)).join(" · ") || null;
+  const selectionLabel = [variant?.label ?? null, variant?.colorHex ?? null].filter((item): item is string => Boolean(item)).join(" · ") || null;
 
   const agentUrl = configuredAgentUrl();
   const token = process.env.ORDER_FLOW_TOKEN;

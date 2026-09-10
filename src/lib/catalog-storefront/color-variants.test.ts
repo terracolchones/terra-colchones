@@ -1,15 +1,15 @@
 import { describe, expect, it } from "vitest";
-import { colorVariantHex, isColorVariant } from "./color-variants";
+import { normalizeColorHex } from "./color-variants";
 
 describe("color variants", () => {
   it("recognizes only complete hexadecimal color values", () => {
-    expect(colorVariantHex(" #AbC123 ")).toBe("#abc123");
-    expect(colorVariantHex("#abc")).toBeNull();
-    expect(colorVariantHex("NEGRO")).toBeNull();
+    expect(normalizeColorHex(" #AbC123 ")).toBe("#abc123");
+    expect(normalizeColorHex("#abc")).toBeNull();
+    expect(normalizeColorHex("NEGRO")).toBeNull();
   });
 
-  it("keeps commercial options separate from color points", () => {
-    expect(isColorVariant({ label: "#1c1917" })).toBe(true);
-    expect(isColorVariant({ label: "2 PLAZAS" })).toBe(false);
+  it("keeps a missing color optional", () => {
+    expect(normalizeColorHex(null)).toBeNull();
+    expect(normalizeColorHex(undefined)).toBeNull();
   });
 });

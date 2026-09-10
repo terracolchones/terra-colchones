@@ -12,11 +12,13 @@ export interface CatalogVariant {
   id: string;
   externalCode: string | null;
   label: string;
+  colorHex: string | null;
   price: number | null;
   compareAtPrice: number | null;
   availability: ProductAvailability;
   active: boolean;
   sortOrder: number;
+  images: CatalogImage[];
 }
 
 export interface CatalogProduct {

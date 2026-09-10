@@ -29,7 +29,7 @@ El catálogo se despliega desde `main`. El agente se despliega desde
 ## Flujo objetivo de compra
 
 ```text
-Bienvenida Terra → Ver catálogo → producto, variante y color → Confirmar pedido
+Bienvenida Terra → Ver catálogo → producto, variante exacta (opción + color) → Confirmar pedido
 
 Llegada desde WhatsApp:
   enlace privado al catálogo → pedido vinculado al mismo chat → Confirmar pedido abre WhatsApp
@@ -47,8 +47,10 @@ del pedido solo vincula la conversación con un pedido ya registrado.
 
 ## Contrato implementado entre servicios
 
-El catálogo valida producto, variante, color y precio contra su fuente propia. Después
-llama desde el servidor a `POST /api/catalog-orders` del agente. El agente crea
+El catálogo valida producto, variante, color y precio contra su fuente propia. Cada
+variante puede tener una galería opcional; al elegirla, la ficha pública usa esa
+galería y, si no existe, conserva como respaldo las fotos generales del producto.
+Después llama desde el servidor a `POST /api/catalog-orders` del agente. El agente crea
 un pedido con un código público como `T-7Q4K-8M2P`; el navegador no conoce IDs
 internos, teléfonos ni acceso a SQLite.
 
@@ -84,6 +86,7 @@ Antes del siguiente desarrollo se crearon estos puntos Git locales:
 | Agente | `codex/safety-before-rag-scale-agent-1f675ba` | `1f675baa1078b0f247dbd7016433d659723ba731` |
 | Catálogo | `codex/backup-catalog-storage-20260910` | `0f372a0` |
 | Catálogo | `codex/catalog-before-color-swatches-20260910` | `fd01c40` |
+| Catálogo | `codex/catalog-before-variant-galleries-20260910` | `d98e53e` |
 
 Las ramas de trabajo son `codex/order-flow-catalog` y
 `codex/order-flow-agent`. Los cambios locales no confirmados ajenos a esta tarea
