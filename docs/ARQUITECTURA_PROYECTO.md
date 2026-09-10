@@ -70,6 +70,24 @@ internos, teléfonos ni acceso a SQLite.
 - La comunicación entre servicios debe ser de servidor a servidor y validada.
   El navegador no recibe secretos ni acceso a la base del agente.
 
+## RAG y atención durante la venta
+
+El RAG pertenece al **agente**, no al catálogo. El panel de conocimiento vive
+en `agente.terracolchonesymuebles.online/conocimiento` y utiliza la misma
+protección del dashboard de operadores.
+
+- Los datos dinámicos de producto (precio, stock y variantes) se mantienen en
+  el catálogo y se consultan vigentes; no se duplican en documentos RAG.
+- La base RAG guarda documentos versionados: borrador, publicado y archivado.
+  Solo una versión publicada puede responder a clientes.
+- La búsqueda combina texto completo y vector cuando el índice semántico está
+  habilitado; una cola recuperable evita bloquear el chat durante indexación.
+- GPS, QR, pedido y comprobante siguen siendo transacciones controladas. Una
+  duda general se responde y después se recuerda el paso de venta pendiente.
+- El modo HUMANO solo se activa si el cliente lo solicita explícitamente. Si un
+  dato no está aprobado, el agente ofrece que un asesor lo confirme sin cambiar
+  el modo por su cuenta.
+
 ## Operación y recuperación
 
 Antes del siguiente desarrollo se crearon estos puntos Git locales:
@@ -80,6 +98,7 @@ Antes del siguiente desarrollo se crearon estos puntos Git locales:
 | Agente | `codex/safety-before-order-flow-agent-c5a0672` | `c5a0672` |
 | Catálogo | `codex/safety-before-qr-recovery-catalog-e1083cd` | `e1083cd` |
 | Agente | `codex/safety-before-qr-recovery-agent-99a8441` | `99a8441` |
+| Agente | `codex/safety-before-rag-scale-agent-1f675ba` | `1f675baa1078b0f247dbd7016433d659723ba731` |
 
 Las ramas de trabajo son `codex/order-flow-catalog` y
 `codex/order-flow-agent`. Los cambios locales no confirmados ajenos a esta tarea
