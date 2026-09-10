@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { containsUnsafeCheckoutReply, shouldSendCatalog } from "./message-routing";
+import { containsUnsafeCheckoutReply, hasSensitiveCommerceData, isControlledCheckoutTopic, isKnowledgeQuestion, isPublicCompanyQuestion, requestsGeneralInformation, shouldSendCatalog } from "./message-routing";
 
 describe("enrutamiento comercial", () => {
   it("manda saludos y peticiones explícitas al catálogo", () => {
@@ -14,6 +14,29 @@ describe("enrutamiento comercial", () => {
     expect(shouldSendCatalog("¿Venden colchones?", 0)).toBe(false);
     expect(shouldSendCatalog("Tienen almohadas", 0)).toBe(false);
     expect(shouldSendCatalog("¿Qué formas de pago aceptan?", 0)).toBe(false);
+  });
+
+  it("reconoce información pública de empresa como una consulta RAG", () => {
+    const question = "¿Dónde están sus sucursales y cuáles son sus horarios?";
+    expect(isPublicCompanyQuestion(question)).toBe(true);
+    expect(isKnowledgeQuestion(question)).toBe(true);
+    expect(hasSensitiveCommerceData(question)).toBe(false);
+    expect(isControlledCheckoutTopic(question)).toBe(false);
+  });
+
+  it("protege la ubicación privada, pero no confunde una sucursal con GPS", () => {
+    expect(hasSensitiveCommerceData("Mi dirección es cerca de la plaza")).toBe(true);
+    expect(isControlledCheckoutTopic("Comparte tu ubicación GPS")).toBe(true);
+    expect(isPublicCompanyQuestion("¿Cuál es la dirección de su oficina? ")).toBe(true);
+    expect(hasSensitiveCommerceData("¿Cuál es la dirección de su oficina? ")).toBe(false);
+  });
+
+  it("no confunde una negación de producto con una petición de catálogo", () => {
+    expect(shouldSendCatalog("No es sobre producto, es una consulta de la empresa", 2)).toBe(false);
+  });
+
+  it("detecta una intención de consulta sin desviarla al GPS o catálogo", () => {
+    expect(requestsGeneralInformation("Ahora mismo quiero hacer una consulta")).toBe(true);
   });
 
   it("no desvía una solicitud de asesor al catálogo", () => {

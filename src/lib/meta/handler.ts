@@ -21,7 +21,7 @@ import { getProductForCatalogLead } from "@/lib/catalog-storefront/server";
 import { parseCatalogLeadContext } from "@/lib/catalog-storefront/whatsapp";
 import { dispatchCatalogLocationRequest } from "@/lib/catalog-order-flow";
 import { HUMAN_HANDOFF_REPLY } from "@/lib/handoff";
-import { containsUnsafeCheckoutReply, hasSensitiveCommerceData, isControlledCheckoutTopic, isKnowledgeQuestion, requestsHumanSupport, shouldSendCatalog } from "@/lib/message-routing";
+import { containsUnsafeCheckoutReply, hasSensitiveCommerceData, isControlledCheckoutTopic, isKnowledgeQuestion, requestsGeneralInformation, requestsHumanSupport, shouldSendCatalog } from "@/lib/message-routing";
 import { generateAssistantReply } from "@/lib/openai";
 import { saleFlowResume } from "@/lib/rag/resume";
 import { sendCatalogCtaMessage, sendTextMessage } from "@/lib/meta/client";
@@ -218,6 +218,10 @@ async function handleTextMessage(message: RecordValue, contactName: string | nul
   }
 
   const activeOrder = getLatestActiveCatalogOrderForConversation(conversation.id);
+  if (requestsGeneralInformation(content) && !hasSensitiveCommerceData(content) && !isControlledCheckoutTopic(content)) {
+    await sendAndStore(conversation, phone, "Claro, ¿qué deseas saber sobre Terra, sus productos o tu pedido?");
+    return;
+  }
   // Una duda comercial no debe cortar la venta. Las acciones sensibles de
   // ubicación, QR, pago y comprobante mantienen el flujo transaccional.
   if (activeOrder && isKnowledgeQuestion(content) && !hasSensitiveCommerceData(content) && !isControlledCheckoutTopic(content)) {

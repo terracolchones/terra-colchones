@@ -51,3 +51,10 @@ Las acciones transaccionales (código de pedido, GPS, QR, imagen de comprobante)
 tienen prioridad. Una pregunta general se responde con RAG y el agente añade el
 recordatorio del siguiente paso del pedido. Solo una solicitud explícita del
 cliente cambia el chat a atención humana.
+
+## Punto de seguridad
+
+Antes del ajuste de prioridad de respuestas RAG se creó el punto recuperable
+`codex/safety-before-rag-answer-priority-6624d17` sobre el commit `6624d17`.
+Ese punto conserva el comportamiento anterior del agente sin incluir cambios
+locales ajenos.
