@@ -7,7 +7,10 @@ import Link from "next/link";
 import { useMemo, useState } from "react";
 import { availabilityLabel } from "@/components/catalog/price";
 import { ProductVisual } from "@/components/catalog/ProductVisual";
-import type { CatalogHomeSettings, CatalogProduct } from "@/lib/catalog-storefront/types";
+import type {
+  CatalogHomeSettings,
+  CatalogProduct,
+} from "@/lib/catalog-storefront/types";
 
 interface StorefrontHomeProps {
   products: CatalogProduct[];
@@ -15,11 +18,23 @@ interface StorefrontHomeProps {
   checkoutToken: string | null;
 }
 
-function ProductCard({ product, checkoutToken }: { product: CatalogProduct; checkoutToken: string | null }) {
-  const image = product.images[0]?.url;
+function ProductCard({
+  product,
+  checkoutToken,
+}: {
+  product: CatalogProduct;
+  checkoutToken: string | null;
+}) {
+  // El listado lleva siempre a la versión principal de la familia. Desde allí se navega a las demás.
+  const primaryVariant =
+    product.variants.find((variant) => variant.active && variant.isPrimary) ??
+    product.variants.find((variant) => variant.active) ??
+    null;
+  const image = primaryVariant?.images[0]?.url ?? product.images[0]?.url;
+  const publicSlug = primaryVariant?.slug || product.slug;
   return (
     <Link
-      href={`/catalogo/productos/${encodeURIComponent(product.slug)}${checkoutToken ? `?checkout=${encodeURIComponent(checkoutToken)}` : ""}`}
+      href={`/catalogo/productos/${encodeURIComponent(publicSlug)}${checkoutToken ? `?checkout=${encodeURIComponent(checkoutToken)}` : ""}`}
       className="group flex min-w-0 flex-col overflow-hidden rounded-[1.35rem] border border-stone-200 bg-white shadow-[0_10px_26px_rgba(30,20,12,0.06)] transition hover:-translate-y-0.5 hover:shadow-[0_16px_30px_rgba(30,20,12,0.1)] focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[#8f1519]"
     >
       <div className="relative aspect-[4/5] overflow-hidden bg-stone-100">
@@ -31,24 +46,46 @@ function ProductCard({ product, checkoutToken }: { product: CatalogProduct; chec
         )}
       </div>
       <div className="flex flex-1 flex-col p-3.5">
-        <p className="text-[11px] font-bold uppercase tracking-[0.11em] text-[#9a2022]">{product.category}</p>
-        <h2 className="mt-1.5 line-clamp-2 text-[15px] font-semibold leading-5 text-stone-900">{product.name}</h2>
+        <p className="text-[11px] font-bold uppercase tracking-[0.11em] text-[#9a2022]">
+          {product.category}
+        </p>
+        <h2 className="mt-1.5 line-clamp-2 text-[15px] font-semibold leading-5 text-stone-900">
+          {primaryVariant?.name || product.name}
+        </h2>
       </div>
     </Link>
   );
 }
 
-export function StorefrontHome({ products, home, checkoutToken }: StorefrontHomeProps) {
+export function StorefrontHome({
+  products,
+  home,
+  checkoutToken,
+}: StorefrontHomeProps) {
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState("Todos");
-  const catalogHref = checkoutToken ? `/catalogo?checkout=${encodeURIComponent(checkoutToken)}` : "/catalogo";
-  const categories = useMemo(() => ["Todos", ...Array.from(new Set(products.map((product) => product.category)))], [products]);
+  const catalogHref = checkoutToken
+    ? `/catalogo?checkout=${encodeURIComponent(checkoutToken)}`
+    : "/catalogo";
+  const categories = useMemo(
+    () => [
+      "Todos",
+      ...Array.from(new Set(products.map((product) => product.category))),
+    ],
+    [products],
+  );
   const filteredProducts = useMemo(() => {
     const normalized = query.trim().toLocaleLowerCase("es");
     return products.filter((product) => {
-      const matchesCategory = category === "Todos" || product.category === category;
-      const searchText = `${product.name} ${product.category} ${product.shortDescription}`.toLocaleLowerCase("es");
-      return matchesCategory && (!normalized || searchText.includes(normalized));
+      const matchesCategory =
+        category === "Todos" || product.category === category;
+      const searchText =
+        `${product.name} ${product.category} ${product.shortDescription}`.toLocaleLowerCase(
+          "es",
+        );
+      return (
+        matchesCategory && (!normalized || searchText.includes(normalized))
+      );
     });
   }, [category, products, query]);
 
@@ -61,11 +98,20 @@ export function StorefrontHome({ products, home, checkoutToken }: StorefrontHome
             className="flex h-16 w-20 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-white focus-visible:outline-2 focus-visible:outline-offset-3 focus-visible:outline-[#8f1519]"
             aria-label="Ir al catálogo Terra"
           >
-            <img src="/catalogo/logo.jpg" alt="Terra Colchones y Muebles" className="h-full w-full object-contain" />
+            <img
+              src="/catalogo/logo.jpg"
+              alt="Terra Colchones y Muebles"
+              className="h-full w-full object-contain"
+            />
           </Link>
           <label className="relative block min-w-0 flex-1">
             <span className="sr-only">Buscar productos</span>
-            <span className="pointer-events-none absolute inset-y-0 left-3 grid place-items-center text-stone-400" aria-hidden="true">⌕</span>
+            <span
+              className="pointer-events-none absolute inset-y-0 left-3 grid place-items-center text-stone-400"
+              aria-hidden="true"
+            >
+              ⌕
+            </span>
             <input
               value={query}
               onChange={(event) => setQuery(event.target.value)}
@@ -80,25 +126,42 @@ export function StorefrontHome({ products, home, checkoutToken }: StorefrontHome
       <div className="mx-auto max-w-5xl px-4">
         <section className="mt-5 overflow-hidden rounded-[1.6rem] bg-stone-900 text-white shadow-[0_18px_32px_rgba(38,22,15,0.16)]">
           <div className="relative min-h-52 overflow-hidden px-6 py-7">
-            {home.imageUrl && <img src={home.imageUrl} alt="Promoción Terra" className="absolute inset-0 h-full w-full object-cover opacity-45" />}
+            {home.imageUrl && (
+              <img
+                src={home.imageUrl}
+                alt="Promoción Terra"
+                className="absolute inset-0 h-full w-full object-cover opacity-45"
+              />
+            )}
             <div className="absolute inset-0 bg-gradient-to-br from-[#8f1519] via-[#611114]/90 to-stone-950/95" />
             <div className="relative max-w-sm">
-              <p className="text-[11px] font-bold tracking-[0.16em] text-white/70">{home.eyebrow}</p>
-              <h1 className="mt-3 text-3xl font-semibold leading-[1.05] tracking-tight">{home.title}</h1>
-              <p className="mt-3 max-w-xs text-sm leading-5 text-white/75">{home.description}</p>
+              <p className="text-[11px] font-bold tracking-[0.16em] text-white/70">
+                {home.eyebrow}
+              </p>
+              <h1 className="mt-3 text-3xl font-semibold leading-[1.05] tracking-tight">
+                {home.title}
+              </h1>
+              <p className="mt-3 max-w-xs text-sm leading-5 text-white/75">
+                {home.description}
+              </p>
             </div>
           </div>
         </section>
 
         <section aria-label="Categorías" className="mt-7">
           <div className="flex items-center justify-between">
-            <h2 className="text-lg font-bold tracking-tight text-stone-900">Explora por categoría</h2>
-            <span className="text-xs font-medium text-stone-500">{products.length} productos</span>
+            <h2 className="text-lg font-bold tracking-tight text-stone-900">
+              Explora por categoría
+            </h2>
+            <span className="text-xs font-medium text-stone-500">
+              {products.length} productos
+            </span>
           </div>
           <div className="-mx-4 mt-3 flex gap-3 overflow-x-auto px-4 pb-2 [scrollbar-width:none]">
             {categories.map((item) => {
               const selected = category === item;
-              const letter = item === "Todos" ? "T" : item.slice(0, 1).toUpperCase();
+              const letter =
+                item === "Todos" ? "T" : item.slice(0, 1).toUpperCase();
               return (
                 <button
                   key={item}
@@ -107,10 +170,16 @@ export function StorefrontHome({ products, home, checkoutToken }: StorefrontHome
                   onClick={() => setCategory(item)}
                   className="flex w-[74px] shrink-0 flex-col items-center gap-2 text-center focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#8f1519]"
                 >
-                  <span className={`grid size-14 place-items-center rounded-full border text-sm font-bold transition ${selected ? "border-[#8f1519] bg-[#8f1519] text-white shadow-lg shadow-[#8f1519]/20" : "border-stone-200 bg-white text-stone-500"}`}>
+                  <span
+                    className={`grid size-14 place-items-center rounded-full border text-sm font-bold transition ${selected ? "border-[#8f1519] bg-[#8f1519] text-white shadow-lg shadow-[#8f1519]/20" : "border-stone-200 bg-white text-stone-500"}`}
+                  >
                     {letter}
                   </span>
-                  <span className={`line-clamp-2 text-xs leading-4 ${selected ? "font-bold text-stone-900" : "font-medium text-stone-600"}`}>{item}</span>
+                  <span
+                    className={`line-clamp-2 text-xs leading-4 ${selected ? "font-bold text-stone-900" : "font-medium text-stone-600"}`}
+                  >
+                    {item}
+                  </span>
                 </button>
               );
             })}
@@ -120,20 +189,42 @@ export function StorefrontHome({ products, home, checkoutToken }: StorefrontHome
         <section className="mt-7" aria-labelledby="productos-heading">
           <div className="flex items-end justify-between gap-4">
             <div>
-              <p className="text-[11px] font-bold tracking-[0.14em] text-[#9a2022]">COLECCIÓN TERRA</p>
-              <h2 id="productos-heading" className="mt-1 text-2xl font-semibold tracking-tight text-stone-950">Productos</h2>
+              <p className="text-[11px] font-bold tracking-[0.14em] text-[#9a2022]">
+                COLECCIÓN TERRA
+              </p>
+              <h2
+                id="productos-heading"
+                className="mt-1 text-2xl font-semibold tracking-tight text-stone-950"
+              >
+                Productos
+              </h2>
             </div>
-            {query && <p className="pb-1 text-xs text-stone-500">{filteredProducts.length} resultados</p>}
+            {query && (
+              <p className="pb-1 text-xs text-stone-500">
+                {filteredProducts.length} resultados
+              </p>
+            )}
           </div>
 
           {filteredProducts.length > 0 ? (
             <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
-              {filteredProducts.map((product) => <ProductCard key={product.id} product={product} checkoutToken={checkoutToken} />)}
+              {filteredProducts.map((product) => (
+                <ProductCard
+                  key={product.id}
+                  product={product}
+                  checkoutToken={checkoutToken}
+                />
+              ))}
             </div>
           ) : (
             <div className="mt-4 rounded-3xl border border-dashed border-stone-300 bg-white px-6 py-12 text-center">
-              <p className="text-base font-semibold text-stone-900">Aún estamos preparando este catálogo.</p>
-              <p className="mt-2 text-sm leading-5 text-stone-500">Vuelve pronto o escribe a Terra por WhatsApp para recibir atención directa.</p>
+              <p className="text-base font-semibold text-stone-900">
+                Aún estamos preparando este catálogo.
+              </p>
+              <p className="mt-2 text-sm leading-5 text-stone-500">
+                Vuelve pronto o escribe a Terra por WhatsApp para recibir
+                atención directa.
+              </p>
             </div>
           )}
         </section>

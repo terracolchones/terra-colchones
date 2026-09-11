@@ -1,7 +1,10 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { ProductDetail } from "@/components/catalog/ProductDetail";
-import { getCatalogWhatsAppPhone, getPublishedProductBySlug } from "@/lib/catalog-storefront/server";
+import {
+  getCatalogWhatsAppPhone,
+  getPublishedCatalogEntryBySlug,
+} from "@/lib/catalog-storefront/server";
 
 export const dynamic = "force-dynamic";
 
@@ -11,22 +14,45 @@ interface ProductPageProps {
 }
 
 function checkoutToken(value: string | string[] | undefined): string | null {
-  return typeof value === "string" && /^[A-Za-z0-9_-]{24,128}$/.test(value) ? value : null;
+  return typeof value === "string" && /^[A-Za-z0-9_-]{24,128}$/.test(value)
+    ? value
+    : null;
 }
 
-export async function generateMetadata({ params }: ProductPageProps): Promise<Metadata> {
+export async function generateMetadata({
+  params,
+}: ProductPageProps): Promise<Metadata> {
   const { slug } = await params;
-  const product = await getPublishedProductBySlug(slug);
-  if (!product) return { title: "Producto no disponible | Terra" };
-  return { title: `${product.name} | Terra`, description: product.shortDescription || `Consulta ${product.name} por WhatsApp.` };
+  const entry = await getPublishedCatalogEntryBySlug(slug);
+  if (!entry) return { title: "Producto no disponible | Terra" };
+  const selected = entry.product.variants.find(
+    (variant) => variant.id === entry.selectedVariantId,
+  );
+  const name = selected?.name || entry.product.name;
+  return {
+    title: `${name} | Terra`,
+    description:
+      entry.product.shortDescription || `Consulta ${name} por WhatsApp.`,
+  };
 }
 
-export default async function ProductPage({ params, searchParams }: ProductPageProps) {
+export default async function ProductPage({
+  params,
+  searchParams,
+}: ProductPageProps) {
   const { slug } = await params;
-  const [product, whatsAppPhone] = await Promise.all([
-    getPublishedProductBySlug(slug),
+  const [entry, whatsAppPhone] = await Promise.all([
+    getPublishedCatalogEntryBySlug(slug),
     getCatalogWhatsAppPhone(),
   ]);
-  if (!product) notFound();
-  return <ProductDetail product={product} whatsAppPhone={whatsAppPhone} checkoutToken={checkoutToken((await searchParams).checkout)} />;
+  if (!entry) notFound();
+  return (
+    <ProductDetail
+      key={entry.selectedVariantId ?? entry.product.id}
+      product={entry.product}
+      initialVariantId={entry.selectedVariantId}
+      whatsAppPhone={whatsAppPhone}
+      checkoutToken={checkoutToken((await searchParams).checkout)}
+    />
+  );
 }

@@ -11,8 +11,16 @@ export interface CatalogImage {
 export interface CatalogVariant {
   id: string;
   externalCode: string | null;
+  /** Nombre comercial propio de esta versión; no tiene por qué coincidir con la familia. */
+  name: string;
+  /** Enlace público independiente para abrir esta versión ya seleccionada. */
+  slug: string;
   label: string;
   colorHex: string | null;
+  colorName: string | null;
+  showColor: boolean;
+  showOptionText: boolean;
+  isPrimary: boolean;
   price: number | null;
   compareAtPrice: number | null;
   availability: ProductAvailability;

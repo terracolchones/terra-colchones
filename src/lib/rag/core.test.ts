@@ -41,8 +41,42 @@ const products: CatalogProduct[] = [
     sortOrder: 1,
     images: [],
     variants: [
-      { id: "gris", externalCode: null, label: "Gris", colorHex: null, price: 2099, compareAtPrice: null, availability: "available", active: true, sortOrder: 1, images: [] },
-      { id: "azul-inactivo", externalCode: null, label: "Azul", colorHex: null, price: 2099, compareAtPrice: null, availability: "available", active: false, sortOrder: 2, images: [] },
+      {
+        id: "gris",
+        externalCode: null,
+        name: "Sillón gris",
+        slug: "sillon-lounge-gris",
+        label: "Gris",
+        colorHex: null,
+        colorName: null,
+        showColor: false,
+        showOptionText: true,
+        isPrimary: true,
+        price: 2099,
+        compareAtPrice: null,
+        availability: "available",
+        active: true,
+        sortOrder: 1,
+        images: [],
+      },
+      {
+        id: "azul-inactivo",
+        externalCode: null,
+        name: "Sillón azul",
+        slug: "sillon-lounge-azul",
+        label: "Azul",
+        colorHex: null,
+        colorName: null,
+        showColor: false,
+        showOptionText: true,
+        isPrimary: false,
+        price: 2099,
+        compareAtPrice: null,
+        availability: "available",
+        active: false,
+        sortOrder: 2,
+        images: [],
+      },
     ],
   },
   {
@@ -67,7 +101,10 @@ const products: CatalogProduct[] = [
 
 describe("RAG de Terra", () => {
   it("extrae secciones recuperables y excluye plantillas internas", () => {
-    expect(knowledge.map((chunk) => chunk.title)).toEqual(["Entrega", "Pagos y comprobantes"]);
+    expect(knowledge.map((chunk) => chunk.title)).toEqual([
+      "Entrega",
+      "Pagos y comprobantes",
+    ]);
   });
 
   it("recupera el producto seleccionado con su precio y variante vigentes", () => {
@@ -88,39 +125,63 @@ describe("RAG de Terra", () => {
   it("no suplanta el precio ni el stock de una variante seleccionada", () => {
     const sources = retrieveApprovedSources({
       query: "¿Cuánto cuesta la variante sin precio?",
-      products: [{
-        ...products[0],
-        variants: [{
-          id: "sin-precio",
-          externalCode: null,
-          label: "Edición especial",
-          colorHex: null,
-          price: null,
-          compareAtPrice: null,
-          availability: "out_of_stock",
-          active: true,
-          sortOrder: 1,
-          images: [],
-        }],
-      }],
+      products: [
+        {
+          ...products[0],
+          variants: [
+            {
+              id: "sin-precio",
+              externalCode: null,
+              name: "Sillón edición especial",
+              slug: "sillon-lounge-edicion-especial",
+              label: "Edición especial",
+              colorHex: null,
+              colorName: null,
+              showColor: false,
+              showOptionText: true,
+              isPrimary: true,
+              price: null,
+              compareAtPrice: null,
+              availability: "out_of_stock",
+              active: true,
+              sortOrder: 1,
+              images: [],
+            },
+          ],
+        },
+      ],
       knowledge,
       selectedLead: { productId: "lounge", variantId: "sin-precio" },
     });
 
     const context = formatRetrievedSources(sources);
-    expect(context).toContain("Disponibilidad de la variante seleccionada: Sin stock");
-    expect(context).toContain("Precio de la variante seleccionada: sin precio publicado.");
+    expect(context).toContain(
+      "Disponibilidad de la variante seleccionada: Sin stock",
+    );
+    expect(context).toContain(
+      "Precio de la variante seleccionada: sin precio publicado.",
+    );
     expect(context).not.toContain("Precio vigente: Bs 1.999");
   });
 
   it("recupera la política pertinente sin inventar una ficha de producto", () => {
-    const sources = retrieveApprovedSources({ query: "¿Hacen envíos a Bolivia?", products, knowledge });
+    const sources = retrieveApprovedSources({
+      query: "¿Hacen envíos a Bolivia?",
+      products,
+      knowledge,
+    });
     expect(sources.some((source) => source.label === "Entrega")).toBe(true);
-    expect(sources.some((source) => source.label === "Producto Oculto")).toBe(false);
+    expect(sources.some((source) => source.label === "Producto Oculto")).toBe(
+      false,
+    );
   });
 
   it("no devuelve fuentes para una consulta sin evidencia", () => {
-    const sources = retrieveApprovedSources({ query: "¿Tienen financiamiento bancario?", products, knowledge });
+    const sources = retrieveApprovedSources({
+      query: "¿Tienen financiamiento bancario?",
+      products,
+      knowledge,
+    });
     expect(sources).toEqual([]);
   });
 });

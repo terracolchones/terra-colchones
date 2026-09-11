@@ -48,10 +48,11 @@ del pedido solo vincula la conversación con un pedido ya registrado.
 ## Contrato implementado entre servicios
 
 El catálogo valida producto, variante, color y precio contra su fuente propia. Un
-producto es la ficha principal que conserva los datos compartidos. Cada variante
-hereda categoría, precio, descripción y detalles técnicos; solo define su nombre
-o tamaño, color, código y una galería opcional. Al elegirla, la ficha pública usa
-esa galería y, si no existe, conserva como respaldo las fotos generales del producto.
+producto es la familia que conserva categoría, descripción y detalles técnicos.
+Cada versión es una ficha pública propia con enlace, nombre, precio, código,
+color y/o texto selector y galería opcional. Al elegirla, cambia la URL, el
+nombre, el precio, el código y la galería; si no cargó fotos, conserva como
+respaldo las fotos generales de la familia.
 Después llama desde el servidor a `POST /api/catalog-orders` del agente. El agente crea
 un pedido con un código público como `T-7Q4K-8M2P`; el navegador no conoce IDs
 internos, teléfonos ni acceso a SQLite.
@@ -78,18 +79,19 @@ internos, teléfonos ni acceso a SQLite.
 
 Antes del siguiente desarrollo se crearon estos puntos Git locales:
 
-| Área | Punto de restauración | Commit protegido |
-| --- | --- | --- |
-| Catálogo | `codex/safety-before-order-flow-catalog-3a846b4` | `3a846b4` |
-| Agente | `codex/safety-before-order-flow-agent-c5a0672` | `c5a0672` |
-| Catálogo | `codex/safety-before-qr-recovery-catalog-e1083cd` | `e1083cd` |
-| Agente | `codex/safety-before-qr-recovery-agent-99a8441` | `99a8441` |
-| Catálogo | `codex/safety-before-desktop-layout-cabd77b` | `cabd77b` |
-| Agente | `codex/safety-before-rag-scale-agent-1f675ba` | `1f675baa1078b0f247dbd7016433d659723ba731` |
-| Catálogo | `codex/backup-catalog-storage-20260910` | `0f372a0` |
-| Catálogo | `codex/catalog-before-color-swatches-20260910` | `fd01c40` |
-| Catálogo | `codex/catalog-before-variant-galleries-20260910` | `d98e53e` |
-| Catálogo | `codex/catalog-before-simplified-variant-editor-20260910` | `dfe6bd9` |
+| Área     | Punto de restauración                                     | Commit protegido                           |
+| -------- | --------------------------------------------------------- | ------------------------------------------ |
+| Catálogo | `codex/safety-before-order-flow-catalog-3a846b4`          | `3a846b4`                                  |
+| Agente   | `codex/safety-before-order-flow-agent-c5a0672`            | `c5a0672`                                  |
+| Catálogo | `codex/safety-before-qr-recovery-catalog-e1083cd`         | `e1083cd`                                  |
+| Agente   | `codex/safety-before-qr-recovery-agent-99a8441`           | `99a8441`                                  |
+| Catálogo | `codex/safety-before-desktop-layout-cabd77b`              | `cabd77b`                                  |
+| Agente   | `codex/safety-before-rag-scale-agent-1f675ba`             | `1f675baa1078b0f247dbd7016433d659723ba731` |
+| Catálogo | `codex/backup-catalog-storage-20260910`                   | `0f372a0`                                  |
+| Catálogo | `codex/catalog-before-color-swatches-20260910`            | `fd01c40`                                  |
+| Catálogo | `codex/catalog-before-variant-galleries-20260910`         | `d98e53e`                                  |
+| Catálogo | `codex/catalog-before-simplified-variant-editor-20260910` | `dfe6bd9`                                  |
+| Catálogo | `codex/catalog-before-public-variant-pages-20260910`      | `3b065c4`                                  |
 
 Las ramas de trabajo son `codex/order-flow-catalog` y
 `codex/order-flow-agent`. Los cambios locales no confirmados ajenos a esta tarea
