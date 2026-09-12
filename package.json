@@ -10,7 +10,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint .",
-    "test": "vitest run"
+    "test": "vitest run",
+    "test:local": "node scripts/run-local-tests.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.115.0",

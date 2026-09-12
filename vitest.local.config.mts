@@ -1,18 +1,21 @@
 import { defineConfig } from "vitest/config";
 import { fileURLToPath } from "node:url";
 
-// Ejecuta únicamente las pruebas de Terra. Evita que una carpeta temporal de
-// dependencias sea tomada como parte de la suite de la aplicación.
+if (process.env.TERRA_LOCAL_SIMULATION !== "1") throw new Error("Use npm run test:local.");
 export default defineConfig({
+  envDir: false,
   resolve: {
-    // Next resuelve server-only durante build; Vitest necesita un módulo vacío
-    // para probar la lógica de servidor sin incluirla en el navegador.
     alias: {
       "@": fileURLToPath(new URL("./src", import.meta.url)),
       "server-only": fileURLToPath(new URL("./src/test/server-only.ts", import.meta.url)),
+      "better-sqlite3": fileURLToPath(new URL("./src/test/sqlite-forbidden.ts", import.meta.url)),
     },
   },
   test: {
     include: ["src/**/*.test.ts", "src/**/*.test.tsx"],
+    setupFiles: ["./src/test/local-simulation-setup.ts"],
+    pool: "forks",
+    maxWorkers: 2,
+    reporters: ["verbose"],
   },
 });
