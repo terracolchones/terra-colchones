@@ -116,6 +116,24 @@ internos, teléfonos ni acceso a SQLite.
   utilizaron datos de demostración locales y mocks para crear pedidos; no se
   enviaron mensajes ni se generaron pedidos reales durante la verificación.
 
+### Resultado del despliegue autorizado
+
+- Publicación en `main`: `0e02bebbf7cc6c1f3759de1a0843f189fee6fbe9`, que incluye
+  la corrección funcional `e56a872` y la autorización documentada.
+- EasyPanel inició el despliegue automático de `terra-catalogo / catalogo` y
+  terminó con `Success`. El registro confirma compilación y TypeScript correctos.
+- La respuesta pública de Colchón Chester devolvió HTTP 200 y el destino
+  comercial oficial verificado; el destino de prueba ya no aparece en esa página.
+- En producción, Comprar sigue rojo y pasa a Confirmar pedido verde. Se verificó
+  Prince 3P Blanco y el producto con nombre de prueba: muestran Próximamente y
+  desactivan Comprar con una explicación previa, sin el intento fallido anterior.
+- Se revisó la vista móvil. No se crearon pedidos de prueba reales ni se enviaron
+  mensajes por WhatsApp. Las comprobaciones de creación de pedido fueron locales
+  con mocks, como se registra arriba.
+- No se desplegó `agentevps / agente` ni se modificaron Meta, SQLite o existencias.
+  Este registro posterior se conserva en la rama de trabajo para evitar un segundo
+  despliegue automático de producción provocado únicamente por documentación.
+
 Antes del siguiente desarrollo se crearon estos puntos Git locales:
 
 | Área     | Punto de restauración                                     | Commit protegido                           |
