@@ -145,7 +145,12 @@ describe("explicit advisor access without false handoffs", () => {
     expectNoCheckoutAction();
   });
 
-  it.each(["No quiero un asesor", "No necesito hablar con un asesor", "¿Eres humano?"])(
+  it.each([
+    "No quiero un asesor", "No necesito hablar con un asesor", "¿Eres humano?",
+    "No estoy pidiendo hablar con asesor", "Quiero información sobre el asesor",
+    "Si necesito un asesor les aviso", "No sé si necesito un asesor",
+    "El asesor me dijo que puedo hablar con un representante",
+  ])(
     "does not transfer merely because the customer mentions an advisor: %s", async (content) => {
       await processWebhookPayload(payload(content));
       expect(fixture.mode).toBe("AI");
@@ -154,6 +159,18 @@ describe("explicit advisor access without false handoffs", () => {
       expectNoCheckoutAction();
     },
   );
+
+  it.each([
+    "Quiero saber si puedo hablar con un asesor", "¿Puedo hablar con una persona?",
+    "Necesito que me atienda alguien de la tienda", "Quiero que un asesor me ayude",
+  ])("transfers explicit polite requests once without consulting the model: %s", async (content) => {
+    await processWebhookPayload(payload(content));
+    await processWebhookPayload(payload(content));
+    expect(fixture.db.setMode).toHaveBeenCalledExactlyOnceWith(1, "HUMAN");
+    expect(fixture.meta.sendTextMessage).toHaveBeenCalledTimes(1);
+    expect(fixture.generateAssistantReply).not.toHaveBeenCalled();
+    expectNoCheckoutAction();
+  });
 
   it("retains the exact advisor instruction for a first website order confirmation", async () => {
     fixture.db.claimCatalogOrder.mockReturnValueOnce({ result: "claimed", order: order("awaiting_location") });
@@ -176,6 +193,45 @@ describe("explicit advisor access without false handoffs", () => {
 });
 
 describe("a confirmed order supplies context without forcing every message into checkout", () => {
+  it.each(["¿Ya aprobaron mi pago?", "Quiero saber el estado de mi comprobante", "¿Mi comprobante sigue en revisión?"])(
+    "answers the known review status without consulting commercial knowledge: %s", async (content) => {
+      const activeOrder = order("payment_proof_received");
+      const before = structuredClone(activeOrder);
+      fixture.db.getLatestActiveCatalogOrderForConversation.mockReturnValue(activeOrder);
+      const event = payload(content);
+      await processWebhookPayload(event);
+      await processWebhookPayload(event);
+      expect(sentText()).toContain("está en revisión por el equipo");
+      expect(sentText()).toContain("Todavía no tengo una confirmación de aprobación");
+      expect(fixture.meta.sendTextMessage).toHaveBeenCalledTimes(1);
+      expect(fixture.generateAssistantReply).not.toHaveBeenCalled();
+      expect(fixture.db.setMode).not.toHaveBeenCalled();
+      expect(activeOrder).toEqual(before);
+      expectNoCheckoutAction();
+    },
+  );
+  it("does not invent a proof or approval when a payment status is requested", async () => {
+    fixture.db.getLatestActiveCatalogOrderForConversation.mockReturnValue(order("awaiting_payment"));
+    await processWebhookPayload(payload("¿Ya aprobaron mi pago?"));
+    expect(sentText()).toContain("no tengo un comprobante registrado");
+    expect(fixture.generateAssistantReply).not.toHaveBeenCalled();
+    expect(fixture.db.setMode).not.toHaveBeenCalled();
+    expectNoCheckoutAction();
+  });
+  it.each([null, "awaiting_location", "awaiting_payment", "payment_proof_received"])(
+    "answers a short affirmation using the previous question with status %s", async (status) => {
+      fixture.db.getLatestActiveCatalogOrderForConversation.mockReturnValue(status ? order(status) : null);
+      fixture.messages.push({ id: 1, role: "assistant", content: "¿Lo prefieres firme?", wa_message_id: "synthetic-previous-question" });
+      await processWebhookPayload(payload("Sí"));
+      expect(fixture.generateAssistantReply).toHaveBeenCalledTimes(1);
+      expect(fixture.generateAssistantReply.mock.calls[0][0]).toEqual(expect.arrayContaining([
+        expect.objectContaining({ role: "assistant", content: "¿Lo prefieres firme?" }),
+        expect.objectContaining({ role: "user", content: "Sí" }),
+      ]));
+      expect(sentText()).not.toContain("¡Con gusto!");
+      expectNoCheckoutAction();
+    },
+  );
   it.each([
     ["awaiting_payment", "¿Qué garantía tiene?"],
     ["awaiting_payment", "¿Puedo pagar al recibir?"],
@@ -327,6 +383,26 @@ describe("a confirmed order supplies context without forcing every message into 
 });
 
 describe("intent edge cases preserve consent and access to knowledge", () => {
+  it.each([null, "awaiting_location", "awaiting_payment"])(
+    "responds to purchase hesitation conversationally without a catalog or checkout with status %s", async (status) => {
+      fixture.db.getLatestActiveCatalogOrderForConversation.mockReturnValue(status ? order(status) : null);
+      const content = "Lo voy a pensar, todavía no estoy listo para comprar.";
+      fixture.generateAssistantReply.mockResolvedValueOnce({
+        content: "Claro, tómate tu tiempo. Aquí estoy si te surge alguna duda.", needsAdvisorConfirmation: false,
+      });
+      await processWebhookPayload(payload(content));
+      expect(fixture.generateAssistantReply).toHaveBeenCalledTimes(1);
+      expect(fixture.generateAssistantReply.mock.calls[0][0]).toEqual(expect.arrayContaining([
+        expect.objectContaining({ role: "user", content }),
+      ]));
+      expect(fixture.meta.sendTextMessage).toHaveBeenCalledExactlyOnceWith(
+        fixture.phone, "Claro, tómate tu tiempo. Aquí estoy si te surge alguna duda.",
+      );
+      expect(fixture.meta.sendCatalogCtaMessage).not.toHaveBeenCalled();
+      expectNoCheckoutAction();
+    },
+  );
+
   it.each(["No confirmo mi pedido #T-TEST-DEMO", "Todavía no confirmo mi pedido #T-TEST-DEMO"])(
     "does not claim a code or request GPS after a negated confirmation: %s", async (content) => {
       fixture.db.claimCatalogOrder.mockReturnValue({ result: "claimed", order: order("awaiting_location") });

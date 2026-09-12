@@ -295,6 +295,19 @@ export function createWebhookProcessor(dependencies: WebhookDependencies): Webho
     }
 
     const activeOrder = getLatestActiveCatalogOrderForConversation(conversation.id);
+    // El estado del comprobante pertenece al pedido, no a documentos comerciales.
+    // Consultarlo nunca valida el pago ni ejecuta otro paso del checkout.
+    const paymentStatusQuestion = /\b(?:pago|comprobante)\b/i.test(content)
+      && /\b(?:aprobaron|aprobado|validaron|validado|confirmaron|confirmado|revisaron|revisado|recibieron|recibido|estado|revisi[oó]n)\b/i.test(content)
+      && /(?:[¿?]|\b(?:ya|saber|sigue|esta|está|estado)\b)/i.test(content);
+    if (paymentStatusQuestion && activeOrder?.status === "payment_proof_received") {
+      await sendAndStore(conversation, phone, "Tu comprobante está en revisión por el equipo. Todavía no tengo una confirmación de aprobación del pago.");
+      return;
+    }
+    if (paymentStatusQuestion && activeOrder?.status === "awaiting_payment") {
+      await sendAndStore(conversation, phone, `Todavía no tengo un comprobante registrado para este pedido. Si ya lo enviaste, un asesor puede revisar qué ocurrió. ${ADVISOR_NOTICE}`);
+      return;
+    }
     if (activeOrder && hasSensitiveCommerceData(content) && !requestsCheckoutAction(content)) {
       await sendAndStore(conversation, phone, `Un asesor puede revisar ese dato de tu pedido. ${ADVISOR_NOTICE}`);
       return;

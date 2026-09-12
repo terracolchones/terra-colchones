@@ -17,7 +17,12 @@ export function isGreeting(content: string): boolean {
 export function isProductIntent(content: string): boolean {
   const normalized = normalize(content);
   if (/\b(?:no|nada)\s+(?:es\s+)?(?:sobre\s+)?(?:producto|oferta|pedido|compra|catalogo)\b/i.test(normalized)
-    || /\bno\s+(?:quiero|deseo|busco)\b/.test(normalized)) {
+    || /\bno\s+(?:quiero|deseo|busco|puedo|he decidido|decidi)\b/.test(normalized)
+    || /\bno\s+(?:estoy|estamos|me siento)\s+(?:list[oa]s?|segur[oa]s?|decidid[oa]s?)\b/.test(normalized)
+    || /\b(?:prefiero|quiero|voy a|lo voy a)\s+(?:pensar(?:lo)?|esperar)\b/.test(normalized)
+    || /\bsolo\s+(?:estoy\s+)?(?:mirando|comparando|averiguando)\b/.test(normalized)) {
+    // Posponer o expresar dudas sobre comprar no solicita abrir el catálogo.
+    // Una solicitud directa de catálogo se resuelve antes en shouldSendCatalog.
     return false;
   }
   return /\b(ver|quiero|deseo|hacer|realizar)?\s*(producto|oferta|pedido|comprar|compra|catalogo)\b/i.test(normalized);
@@ -26,13 +31,34 @@ export function isProductIntent(content: string): boolean {
 /** Una solicitud explícita de atención humana nunca debe quedar detrás del CTA. */
 export function requestsHumanSupport(content: string): boolean {
   const value = normalize(content);
-  const person = "(?:asesor(?:a)?|atencion humana|persona real|humano|humana|operador|representante)";
-  if (new RegExp(`^(?:un |una )?${person}[.!\\s]*$`).test(value)) return true;
-  // Cada cláusula conserva su negación. Preguntar por identidad no solicita transferencia.
+  const person = "(?:asesor(?:a)?|atencion humana|persona(?: real)?|humano|humana|operador(?:a)?|representante|alguien (?:de la tienda|del equipo))";
+  const recipient = `(?:(?:un|una|el|la)\\s+)?${person}\\b`;
+  if (new RegExp(`^(?:por favor[,]?\\s+)?${recipient}(?:\\s+por favor)?[.!\\s]*$`).test(value)) return true;
+  const desire = "(?:quiero|quisiera|necesito|prefiero|deseo|me gustaria)";
+  const contact = "(?:hablar|comunicarme|contactar|contactarme|conversar)";
+  const requests = [
+    `\\b${desire}\\s+${recipient}`,
+    `\\b(?:${desire}|puedo|podria)\\s+(?:poder\\s+)?${contact}\\s+(?:con\\s+)?${recipient}`,
+    `\\b(?:conectame|pasame|derivame|comunicame|transfiereme)\\s+(?:(?:con|a)\\s+)?${recipient}`,
+    `\\b${desire}\\s+que\\s+(?:me\\s+(?:atienda|ayude|contacte)\\s+${recipient}|${recipient}\\s+me\\s+(?:atienda|ayude|contacte))`,
+    `\\b(?:puede|podria)\\s+${recipient}\\s+(?:atenderme|ayudarme|contactarme|hablar conmigo)`,
+    `^(?:por favor\\s+)?(?:${contact}\\s+con|que me (?:atienda|ayude))\\s+${recipient}`,
+  ].map((pattern) => new RegExp(pattern));
+  // Una mención informativa no es consentimiento. Las negaciones, hipótesis y
+  // citas se evalúan en la cláusula del pedido, no por una palabra aislada.
   return value.split(/[.!?;,]|\bpero\b/).some((clause) => {
-    const match = new RegExp(`\\b(?:quiero|quisiera|necesito|prefiero|puedo|podria|hablar|hablo|hablarme|comunicarme|conectame|pasame|derivame|contactar|contactarme|atienda|atenderme)\\b[\\s\\S]{0,80}\\b${person}\\b`).exec(clause);
-    if (!match || /\b(?:saber|eres|sos|dijo|significa|es un|es una)\b/.test(match[0])) return false;
-    return !/\b(?:no|sin|nunca|no se si)\s*$/.test(clause.slice(0, match.index));
+    return requests.some((request) => {
+      const match = request.exec(clause.trim());
+      if (!match) return false;
+      const prefix = clause.trim().slice(0, match.index);
+      if (/\b(?:no|nunca|tampoco|sin)\s*(?:yo\s*)?$/.test(prefix)) return false;
+      if (/\bno\s+(?:se\s+si|estoy\s+pidiendo|estoy\s+solicitando|estoy\s+diciendo\s+que|he\s+pedido|he\s+solicitado)\b[\s\S]*$/.test(prefix)) return false;
+      const asksContactAvailability = /\b(?:quiero|quisiera|necesito|me gustaria)\s+saber\s+si\s*$/.test(prefix)
+        && !/\b(?:no|nunca|tampoco)\s+(?:quiero|quisiera|necesito|me gustaria)\b/.test(prefix);
+      if (/\b(?:si|cuando|en caso de que)\s+(?:yo\s+)?$/.test(prefix) && !asksContactAvailability) return false;
+      if (/\b(?:me\s+)?(?:dijo|dijeron|decia|escribio|pregunto|preguntaron)\b[\s\S]*$/.test(prefix)) return false;
+      return true;
+    });
   });
 }
 
@@ -50,7 +76,9 @@ export function declinesHumanSupport(content: string): boolean {
 }
 
 export function isAcknowledgment(content: string): boolean {
-  return /^(?:(?:muchas |muchisimas |mil )?gracias(?: por (?:todo|la ayuda|la informacion))?|ok(?:ay)?|esta bien|entendido|perfecto|listo|de acuerdo|dale|vale|bien|si)[!.\s]*$/.test(normalize(content));
+  // «Sí», «listo» o «perfecto» pueden contestar una pregunta comercial pendiente.
+  // Solo un agradecimiento inequívoco usa el cierre breve sin consultar historial.
+  return /^(?:(?:muchas |muchisimas |mil )?gracias(?: por (?:todo|la ayuda|la informacion))?)[!.\s]*$/.test(normalize(content));
 }
 
 export function requestsOrderChange(content: string): boolean {
