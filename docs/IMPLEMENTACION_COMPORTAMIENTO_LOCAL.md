@@ -147,8 +147,12 @@ Lint sin errores, con una advertencia previa en el export del worker Deno.
 Verificación HTTP con Next real aprobada: pantalla accesible, autenticación,
 guardar sin activar, publicación, conflicto 409, restauración conservando borrador,
 simulación y fuentes. Se corrigió la validación del origen cuando Next normaliza
-`127.0.0.1` a `localhost`. No había navegador disponible en CUA: la revisión
-visual y la interacción DOM quedan expresamente pendientes.
+`127.0.0.1` a `localhost`. La revisión posterior con navegador conectado confirmó
+el editor, los controles y una consulta del simulador con su fuente ficticia.
+El navegador integrado dejaba la navegación sin contenido al no mostrar el
+desafío HTTP Basic. Se autenticó la sesión de prueba y después se abrió la URL
+limpia, sin credenciales: los fetch relativos no aceptan una URL base con usuario
+y contraseña. No fue necesario desactivar la autenticación ni cambiar producción.
 
 ESLint permite `@ts-nocheck` con explicación solamente en los dos workers Deno
 existentes. La compilación de Next no valida el runtime de Supabase; estos workers
@@ -168,8 +172,8 @@ anterior. Esa configuración vive en `data/agent-behavior.db` o en la ruta
 `TERRA_BEHAVIOR_DB_PATH`; debe incluirse en el respaldo operativo cuando se prepare
 un despliegue. Revertir código no implica restaurar ni borrar pedidos nuevos.
 
-Antes de una liberación real quedan la revisión visual en un navegador conectado,
-la valoración del tono con un modelo real usando casos ficticios y una prueba
+Antes de una liberación real quedan la valoración del tono con un modelo real
+usando casos ficticios, la revisión de políticas comerciales y una prueba
 controlada expresamente autorizada. Verificar servicio, revisión desplegada,
 volumen persistente de configuración, origen HTTPS del proxy, cuenta, callback y
 suscripción `messages` antes de cualquier contacto de prueba por WhatsApp.
