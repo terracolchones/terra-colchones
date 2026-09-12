@@ -88,7 +88,7 @@
     {
       "id":"order_objection", "stage":"awaiting_location",
       "review":"Debe tratar la objeción con empatía, sin prometer descuentos ni exigir ubicación. Como máximo una pregunta pertinente.",
-      "turns":[{"message":"Me preocupa que termine siendo incómodo para mí y prefiero pensarlo.","expect":{"modelCalled":true,"orderStatus":"awaiting_location","forbidActions":["gps","qr","catalog"]}}]
+      "turns":[{"message":"Me preocupa que termine siendo incómodo para mí y prefiero pensarlo.","expect":{"modelCalled":true,"orderStatus":"awaiting_location","forbidActions":["gps","qr","catalog"],"forbidText":["pago","comprobante","awaiting_location","guardar","nota"]}}]
     },
     {
       "id":"price_supported", "stage":"awaiting_location",

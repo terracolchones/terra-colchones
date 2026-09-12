@@ -10,15 +10,15 @@ function commercialContext(orderStatus?: string) {
 
 describe("commercial stage descriptions", () => {
   it.each([
-    ["awaiting_chat_confirmation", "Pedido pendiente de confirmación por el cliente", "La compra y el pago aún no están confirmados"],
-    ["awaiting_location", "Pedido confirmado; coordinación de entrega en curso", "El pago todavía no está confirmado"],
-    ["awaiting_payment", "Se está esperando el pago o su comprobante", "el pago todavía no está confirmado"],
-    ["payment_proof_received", "Comprobante recibido y en revisión", "el pago todavía no está confirmado"],
-    ["payment_confirmed", "Pedido y pago confirmados según el registro del sistema", "No hay confirmación de despacho ni entrega"],
-  ])("provides only supported commercial facts for %s", (status, description, limit) => {
+    ["awaiting_chat_confirmation", "Pedido pendiente de confirmación por el cliente."],
+    ["awaiting_location", "Compra confirmada por el cliente."],
+    ["awaiting_payment", "Compra confirmada por el cliente."],
+    ["payment_proof_received", "Compra confirmada por el cliente."],
+    ["payment_confirmed", "Compra confirmada por el cliente."],
+  ])("passes only the customer's confirmation level for %s", (status, description) => {
     const stage = commercialContext(status);
-    expect(stage).toContain(description);
-    expect(stage).toContain(limit);
+    expect(stage).toBe(description);
+    expect(stage).not.toMatch(/pago|pagad|comprobante|ubicaci[oó]n|gps|despacho|entrega|revisi[oó]n/i);
     expect(composeInstructions("", "", { orderStatus: status })).not.toContain(status);
   });
 
@@ -28,7 +28,7 @@ describe("commercial stage descriptions", () => {
 
   it("distinguishes orientation from an unknown existing order state", () => {
     expect(commercialContext()).toBe("Orientación, sin pedido confirmado en este contexto.");
-    expect(commercialContext("unknown_synthetic_state")).toContain("El estado actual del pedido no está disponible");
+    expect(commercialContext("unknown_synthetic_state")).toContain("El estado de confirmación del pedido no está disponible");
     expect(commercialContext("unknown_synthetic_state")).not.toMatch(/compra confirmada|pedido confirmado|pago confirmado/i);
   });
 
@@ -36,7 +36,7 @@ describe("commercial stage descriptions", () => {
     "does not interpolate unknown state data into model instructions: %s", (status) => {
       const instructions = composeInstructions("", "", { orderStatus: status });
       expect(instructions).not.toContain(status);
-      expect(commercialContext(status)).toContain("No afirmes confirmación, pago, despacho ni entrega");
+      expect(commercialContext(status)).toBe("El estado de confirmación del pedido no está disponible en este contexto.");
     },
   );
 
@@ -53,9 +53,12 @@ describe("commercial stage descriptions", () => {
     }];
     await respond(history, null, { orderStatus: "awaiting_location" });
     const input = complete.mock.calls[0][0];
-    expect(input.instructions).toContain("coordinación de entrega en curso");
+    expect(input.instructions).toContain("Compra confirmada por el cliente.");
     expect(input.instructions).not.toContain("awaiting_location");
     expect(input.instructions).toContain("no conviertas un término general en una lista de casos deducidos");
+    expect(input.instructions).toContain("No comuniques ni deduzcas estados operativos");
+    expect(input.instructions).toContain("No ejecutes ni ofrezcas guardar notas");
+    expect(input.instructions).toContain("generales aprobadas, incluidas las formas y condiciones de pago publicadas");
     expect(input.instructions).toContain(PROTECTED_INSTRUCTIONS);
     expect(complete).toHaveBeenCalledTimes(1);
   });

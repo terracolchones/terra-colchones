@@ -32,9 +32,11 @@ El bundle es un respaldo de Git; no representa una copia de la base operativa.
 - Cierre breve ante agradecimientos, sin insistir en el paso de compra.
 - Se eliminan saludos iniciales repetidos en conversaciones continuas y se
   reconocen invitaciones equivalentes a escribir `asesor` sin duplicarlas.
-- El contexto del pedido llega al modelo en español, sin códigos internos;
-  no se deducen confirmaciones cuando el estado es desconocido. Las políticas
-  no deben ampliarse con exclusiones o ejemplos que la fuente no publica.
+- El contexto conversacional comunica solo selección y confirmación del cliente,
+  en español y sin códigos internos. El handler conserva las etapas operativas.
+  No se deducen confirmaciones cuando el estado es desconocido ni se ofrecen
+  gestiones o guardado de notas. Las políticas no deben ampliarse con exclusiones
+  o ejemplos que la fuente no publica.
 - Configuración de modelo compartida entre respuesta real y evaluación.
   GPT-5 mini usa `minimal`, `max_output_tokens: 1536`, verbosidad baja,
   `store: false` y un único intento. Se rechazan respuestas vacías,
@@ -54,6 +56,10 @@ real del modelo nuevo pasó 210 controles en 14 escenarios / 25 turnos, con
 12 peticiones al proveedor (19.229 tokens de entrada y 1.008 de salida).
 La lectura semántica detectó saludos/avisos repetidos y un código de estado
 en una respuesta: se corrigieron antes de activar el modelo para clientes.
+La prueba aislada de `f382694` pasó controles técnicos, pero la objeción de
+comodidad mencionó una revisión de pago incorrecta y ofreció guardar una nota.
+Se rechazó semánticamente esa versión para activar el modelo. El contexto se
+redujo a selección/confirmación y se añadieron controles de regresión al caso.
 
 La revisión siguiente se evalúa en una carpeta aislada del servidor, con
 módulos puros y fixtures del commit publicado y su hash verificado. Solo
