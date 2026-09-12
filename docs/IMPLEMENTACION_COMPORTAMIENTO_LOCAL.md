@@ -1,6 +1,8 @@
 # Terra: comportamiento editable y pruebas locales
 
-Fecha: 12 de septiembre de 2026. Estado: implementado localmente; sin despliegue.
+Fecha: 12 de septiembre de 2026. Estado: implementado y desplegado en el agente.
+La preparación local se conserva como registro histórico; la verificación final
+está en [Liberación del comportamiento](LIBERACION_COMPORTAMIENTO_20260912.md).
 
 ## Respaldo y referencia operativa
 

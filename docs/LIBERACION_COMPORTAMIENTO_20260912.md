@@ -104,15 +104,55 @@ respaldo operativo como `knowledge-after-semantic.json` y
 `knowledge-after-fts.json`. No se enviaron mensajes por WhatsApp ni se escribieron
 datos en Supabase. La función semántica externa permanece sin corregir.
 
-El despliegue sigue pendiente. El 12
-de septiembre la revisión automática rechazó subir el código a GitHub porque el
-repositorio de despliegue es público y solicitó aprobación expresa de esa
-publicación. Se pidió al usuario esa autorización específica. No se intentó
-eludir el bloqueo ni modificar la configuración de despliegue.
+## Despliegue completado y verificación posterior
 
-Este documento no acredita un despliegue mientras esta sección siga pendiente.
-La autenticación de la búsqueda semántica es un problema externo identificado;
-la recuperación alternativa de contenido publicado sí quedó verificada.
+Después de informar que el repositorio de despliegue es público, el usuario
+respondió «súbelo a producción quiero ver el comportamiento». La publicación
+autorizada se realizó con un avance Git normal y atómico de las ramas de trabajo
+y producción a `ecef880498012a981bd8514dca7ee296c7515e38`, sin forzar historial.
+Se verificaron otra vez servicio, repositorio y rama en EasyPanel. El despliegue
+automático de `agentevps / agente` terminó correctamente (55 segundos).
+El catálogo no se desplegó.
+
+La revisión automática había bloqueado inicialmente publicar código en un repo
+público; la confirmación específica del usuario resolvió ese bloqueo. También
+bloqueó renovar la copia de conversaciones por la restricción de AGENTS.md.
+Se conservó la copia consistente existente de las 17:42 UTC, comprobando su
+presencia y el manifiesto de integridad, y el respaldo Git final. No se creó otra
+copia de conversaciones ni se restauraron datos. La reversión prevista es de
+código y conserva los pedidos posteriores al respaldo.
+
+Comprobaciones finales por el dominio HTTPS real, entre las 18:40 y 18:41 UTC
+del 12 de septiembre (14:40–14:41 en Bolivia):
+
+- Panel `/comportamiento`: HTTP 200 y título correcto con autenticación.
+- Acceso anónimo a `/api/behavior`: HTTP 401 y desafío Basic.
+- Lectura de configuración: HTTP 200, `no-store` y versión activa válida.
+- Simulación con origen ajeno: HTTP 403. Con el origen HTTPS correcto: HTTP 200,
+  una respuesta sintética, fuente de conocimiento y texto del editor utilizado.
+  La simulación conservó revisión, versión activa y borrador.
+- Configuración en `/app/data/agent-behavior.db`, dentro del volumen persistente
+  `agente-data`; comprobación de integridad `quick_check: ok`. No se abrió la base
+  operativa de conversaciones para estas verificaciones.
+- Hashes del procesador, RAG, prompt y documento de liberación del contenedor
+  coinciden con la revisión desplegada. El informe posterior es adicional al
+  documento contenido en esa imagen.
+- Diagnóstico de WhatsApp: HTTP 200, `connected`, calidad `GREEN` y webhook
+  `reachable`. Esto no acredita una entrega nueva de WhatsApp: no se enviaron
+  mensajes de prueba a clientes.
+
+Las evidencias sin contenido se guardaron junto al respaldo operativo como
+`production-ui-checks-ecef880.json` y `production-runtime-checks-ecef880.json`.
+El navegador integrado rechazó abrir el dominio con `ERR_BLOCKED_BY_CLIENT`;
+el acceso autenticado por HTTPS se verificó directamente. Se proporciona el
+enlace para abrir el panel en el navegador habitual con su acceso existente.
+
+La búsqueda semántica externa mantiene el fallo de autenticación identificado;
+la recuperación alternativa de contenido publicado sí quedó verificada. La
+pregunta de garantía continúa sin evidencia suficiente y requiere información
+comercial aprobada. No se inventaron políticas para superar esa comprobación.
+La evaluación del tono real está documentada arriba; el simulador visible del
+panel sigue usando datos ficticios y no demuestra la respuesta de la IA real.
 
 Para una reversión de código, preparar una rama de liberación desde la referencia
 de seguridad, verificar otra vez el servicio y actualizar su rama de despliegue
