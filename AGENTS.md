@@ -10,8 +10,8 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 
 # Terra: servicio del agente de WhatsApp
 
-Este worktree (`E:\Terra App\agent-production-worktree`) corresponde al agente
-real de EasyPanel `agentevps / agente`: webhook de Meta, WhatsApp, OpenAI/RAG,
+Este repositorio corresponde al agente real de EasyPanel `agentevps / agente`:
+webhook de Meta, WhatsApp, OpenAI/RAG,
 GPS, QR, comprobantes y panel de operadores. Su dominio operativo es
 `https://agente.terracolchonesymuebles.online`.
 
@@ -34,3 +34,15 @@ ruta o el panel del catálogo para diagnosticar este agente.
   explícita y verificación final.
 - Actualizar `E:\Terra App\01\docs\ARQUITECTURA_PROYECTO.md` cuando una
   modificación afecte el contrato entre catálogo y agente.
+
+## Contrato de estabilidad obligatorio
+
+Antes de modificar el agente, leer completamente
+[docs/CONTRATO_DE_ESTABILIDAD_DEL_AGENTE.md](docs/CONTRATO_DE_ESTABILIDAD_DEL_AGENTE.md).
+Las mejoras de prompt, tono y conocimiento NO autorizan a quitar o debilitar el
+filtro del receptor, HMAC/deduplicación, respeto a HUMANO, tratamiento de envíos
+aceptados/inciertos, reservas GPS/QR o diagnóstico sanitizado. No copiar código
+anterior a las correcciones ni eliminar pruebas para hacer pasar una regresión.
+Un cambio estructural de esas protecciones requiere autorización específica,
+revisión y pruebas equivalentes o mejores. El documento distingue correcciones,
+controles preexistentes y pendientes; no promete inmunidad frente a baneos.
