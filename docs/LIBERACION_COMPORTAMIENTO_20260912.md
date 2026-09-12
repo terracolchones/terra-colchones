@@ -1,0 +1,99 @@
+# Liberación del comportamiento — 12 de septiembre de 2026
+
+## Alcance y autorización
+
+El usuario autorizó completar las fases, realizar pruebas controladas, respaldar
+y desplegar cuando las verificaciones sean satisfactorias. El objetivo incluye
+el editor visible del System Prompt, conocimiento aprobado y recorridos distintos
+para orientación y pedido confirmado. Se mantiene literalmente el acceso a asesor.
+
+Servicio verificado en EasyPanel: `agentevps / agente`. Origen Git:
+`terracolchones/terra-colchones`, rama `agent-production`, directorio `/`.
+Despliegue automático habilitado: subir ramas `codex/` no libera el servicio.
+
+## Respaldos verificados
+
+- Respaldo inicial solicitado **angenteterra 1**:
+  `E:\Terra App\backups\angenteterra 1\angenteterra-1.bundle`.
+  SHA256 `C155FB76157EBEFC5B53EBCF08B68597D5A2BAE87EC81227959AEC0DBFBFB849`.
+  Código y Git; no contiene secretos ni datos operativos.
+- Versión productiva antes de esta liberación, comprobada en Git remoto y
+  despliegues de EasyPanel: `bc550620295816b1b9d7f4fe563b3a72a4aff0b0`.
+- Referencia local y remota recuperable:
+  `codex/safety-angenteterra-1-production-20260912`.
+- Copia SQLite consistente mediante `better-sqlite3.backup()` en el volumen
+  persistente `agente-data`, montado en `/app/data`:
+  `/app/data/backups/angenteterra-1-2026-09-12T17-42-28-819Z/`.
+  Su `manifest.json` conserva fecha, versión, archivo y hash SHA256. La copia de
+  `messages.db` devolvió `integrity_check: ok`. No se mostraron registros.
+  La base de comportamiento aún no existía en esa versión. Directorio privado
+  y archivos con permisos restringidos. Esta copia está en el mismo servidor;
+  protege la reversión del despliegue, no la pérdida completa del volumen.
+
+## Verificación de comportamiento
+
+- Casos de intención corregidos: negación de compra, respuestas afirmativas con
+  historial, menciones informativas de asesor y solicitudes explícitas de atención.
+- Una pregunta sobre aprobación del pago consulta el estado conocido del pedido;
+  un comprobante recibido sigue en revisión y jamás se aprueba automáticamente.
+- Evaluación reproducible: `scripts/eval-agent-behavior.mjs`, 14 escenarios y
+  25 turnos con datos ficticios, handler y recuperación puros compartidos.
+  El dry-run completo no presenta fallos técnicos. No demuestra calidad del modelo.
+- El proveedor real comprobado es OpenRouter y el modelo configurado es
+  `google/gemini-2.5-flash-lite`; se conserva esa configuración. La evaluación
+  real utiliza exclusivamente su endpoint configurado de Responses, sin Meta,
+  clientes reales, datos operativos ni lectura de archivos de credenciales.
+- Evaluación real ejecutada desde el candidato `e43753d` en `/tmp`, con 12
+  llamadas, 11.423 tokens de entrada y 360 de salida. Los 210 controles de los
+  14 escenarios y 25 turnos pasaron. Se leyeron todas las respuestas para revisar
+  memoria, precisión respecto a fuentes ficticias, objeciones, aprobación de pago,
+  acceso humano, ausencia de insistencia y efecto visible del prompt actualizado.
+  La marca de estilo publicada en memoria apareció en la siguiente respuesta.
+  La evidencia completa y hashes de los módulos ejecutados se conservaron como
+  `model-evaluation.json` junto al respaldo SQLite del servidor.
+  Es una evaluación acotada con datos ficticios, no una promesa de respuestas
+  perfectas en todos los casos ni una prueba de entrega real de WhatsApp.
+- Diagnóstico previo por el dominio HTTPS del agente: HTTP 200, conexión
+  `connected`, calidad `GREEN` y webhook `reachable`. Se imprimieron únicamente
+  esos indicadores, sin teléfono ni otros datos de la cuenta.
+
+## Estado de liberación
+
+La revisión amplió las protecciones del QR manual: usa la misma reserva que el
+automático, valida el pedido actual y conserva una reserva incierta para evitar
+duplicados. En HUMANO se pueden registrar silenciosamente confirmación, GPS y
+comprobante del único pedido asociado, sin generar respuestas automáticas.
+Las consultas SQL reales se probaron con SQLite en memoria: siete escenarios.
+
+La sonda de conocimiento detectó dos documentos publicados, dos fragmentos y
+seis productos en el proyecto usado realmente por el agente. La búsqueda Edge
+`rag-search` devolvió 401, mientras las lecturas REST y la búsqueda FTS respondieron
+200. FTS no recuperó resultados para cuatro consultas naturales. No se cambiaron
+credenciales ni se redujo la autenticación. Se agregó recuperación directa de
+versiones publicadas y catálogo como respaldo, con caché limitada, invalidación
+al publicar y espera entre intentos semánticos fallidos. La revisión independiente
+detectó y solicitó corregir el título mutable de un borrador y la pérdida de
+paráfrasis semánticas por filtrado léxico.
+
+Ambos hallazgos quedaron corregidos y aprobados por revisión independiente en
+`415849fc0ee1861a9f6b4211cfe3c33e39e0b0fd`: el respaldo usa una etiqueta estable,
+consulta solo contenido versionado publicado y conserva coincidencias semánticas.
+La versión pasó **339 pruebas en 26 archivos**, TypeScript y build local. Lint
+no tiene errores; conserva una advertencia anterior en el export del worker Deno.
+También pasaron siete escenarios de SQL nativa en memoria y las sondas ficticias
+de conocimiento FTS y semántico.
+
+La comprobación real de este respaldo y el despliegue siguen pendientes. El 12
+de septiembre la revisión automática rechazó subir el código a GitHub porque el
+repositorio de despliegue es público y solicitó aprobación expresa de esa
+publicación. Se pidió al usuario esa autorización específica. No se intentó
+eludir el bloqueo ni modificar la configuración de despliegue.
+
+Este documento no acredita un despliegue mientras esta sección siga pendiente.
+La autenticación de la búsqueda semántica es un problema externo identificado;
+el respaldo publicado debe verificarse por separado.
+
+Para una reversión de código, preparar una rama de liberación desde la referencia
+de seguridad, verificar otra vez el servicio y actualizar su rama de despliegue
+con control de concurrencia. Conservar los datos posteriores al respaldo; no
+restaurar toda la base automáticamente ni sobrescribir archivos de configuración.

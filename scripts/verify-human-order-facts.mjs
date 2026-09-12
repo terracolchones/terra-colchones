@@ -17,8 +17,8 @@ function databaseFixture() {
   const cache = new Map();
   function load(relative) {
     if (cache.has(relative)) return cache.get(relative);
-    const module = { exports: {} };
-    cache.set(relative, module.exports);
+    const loadedModule = { exports: {} };
+    cache.set(relative, loadedModule.exports);
     const output = ts.transpileModule(readFileSync(path.join(root, relative), "utf8"), {
       compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, esModuleInterop: true },
     }).outputText;
@@ -36,11 +36,11 @@ function databaseFixture() {
       throw new Error("Unexpected dependency in the isolated SQL fixture.");
     };
     vm.runInNewContext(output, {
-      module, exports: module.exports, require: controlledRequire,
+      module: loadedModule, exports: loadedModule.exports, require: controlledRequire,
       process: { cwd: () => "/synthetic-memory-only" }, console, Buffer,
     });
-    cache.set(relative, module.exports);
-    return module.exports;
+    cache.set(relative, loadedModule.exports);
+    return loadedModule.exports;
   }
   const db = load("src/lib/db.ts");
   const conversation = db.getOrCreateConversation("synthetic-human-customer", null);

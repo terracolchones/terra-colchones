@@ -172,11 +172,12 @@ anterior. Esa configuración vive en `data/agent-behavior.db` o en la ruta
 `TERRA_BEHAVIOR_DB_PATH`; debe incluirse en el respaldo operativo cuando se prepare
 un despliegue. Revertir código no implica restaurar ni borrar pedidos nuevos.
 
-Antes de una liberación real quedan la valoración del tono con un modelo real
-usando casos ficticios, la revisión de políticas comerciales y una prueba
-controlada expresamente autorizada. Verificar servicio, revisión desplegada,
-volumen persistente de configuración, origen HTTPS del proxy, cuenta, callback y
-suscripción `messages` antes de cualquier contacto de prueba por WhatsApp.
+El resultado anterior corresponde a la primera verificación local. La evaluación
+posterior con el modelo real, los controles ampliados, el conocimiento publicado,
+los respaldos y el estado del despliegue se registran en
+[Liberación del comportamiento](LIBERACION_COMPORTAMIENTO_20260912.md).
+Antes de cualquier contacto de prueba por WhatsApp, verificar servicio, cuenta,
+callback y suscripción `messages`, además del destinatario de prueba autorizado.
 
 El usuario necesita valorar el tono y confirmar las políticas comerciales que
 faltan. Las pruebas técnicas locales y la preparación se pueden realizar sin
