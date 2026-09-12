@@ -68,5 +68,30 @@ condiciones de transferencia explícita a HUMANO.
   no se convierte en autoridad para números. Las consultas combinadas conservan
   la respuesta del modelo y validan los pares de nombre y teléfono.
 
-Preparado para desplegar solo `agentevps / agente` mediante `agent-production`.
-La verificación posterior se registra después de confirmar la imagen del servidor.
+## Producción verificada
+
+Se publicaron atómicamente la rama de trabajo, la referencia de seguridad y el
+avance normal de `agent-production` a
+`68d4c8de8bc4c18cfc5ee7c3837db156d2b63ae7`. EasyPanel confirmó el despliegue
+correcto de `agentevps / agente`; el catálogo no se desplegó.
+
+El 12 de septiembre de 2026 a las 21:16 UTC se verificó:
+
+- Hashes del handler, servicio RAG, directorio, formato e instrucciones iguales
+  a los blobs de la revisión liberada.
+- Panel y APIs autenticadas: HTTP 200. API de comportamiento anónima: HTTP 401.
+- Prompt inicial activo con texto plano y sin la expresión fría anterior.
+- Documento comercial publicado con el contenido exacto aprobado.
+- Conexión `connected`, calidad `GREEN` y webhook `reachable`.
+
+Siete comprobaciones adicionales con entradas ficticias y lectura del conocimiento
+comercial vigente pasaron en el contenedor nuevo: números por ciudad, error de
+escritura de Cochabamba, seguimiento por asesor, ausencia de horario de Tarija y
+consulta combinada de oficina y teléfonos. Usaron el directorio y responder puros
+del código desplegado: cero llamadas al modelo y cero mensajes de WhatsApp. No
+se abrieron conversaciones ni pedidos. No equivalen a una prueba de entrega por Meta.
+
+La evidencia de salud sin contenido se guardó en
+`/app/data/backups/contacts-release-68d4c8d-checks.json`. El respaldo comercial
+anterior y la referencia Git permanecen disponibles. Esta anotación posterior
+se guarda en la rama de trabajo sin provocar otro despliegue solo por documentación.
