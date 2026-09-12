@@ -29,6 +29,11 @@ Despliegue automático habilitado: subir ramas `codex/` no libera el servicio.
   La base de comportamiento aún no existía en esa versión. Directorio privado
   y archivos con permisos restringidos. Esta copia está en el mismo servidor;
   protege la reversión del despliegue, no la pérdida completa del volumen.
+- Respaldo local final del código y las tres referencias de recuperación:
+  `E:\Terra App\backups\angenteterra 1\angenteterra-1-release-20260912-010331f.bundle`.
+  Historial completo comprobado mediante `git bundle verify`. SHA256
+  `47084FDC68EE76E92EBEA9F054E38AFF04D900438C12A73AF856FEC8400174BE`.
+  El manifiesto adyacente `release-20260912-010331f.json` registra su alcance.
 
 ## Verificación de comportamiento
 
@@ -83,7 +88,23 @@ no tiene errores; conserva una advertencia anterior en el export del worker Deno
 También pasaron siete escenarios de SQL nativa en memoria y las sondas ficticias
 de conocimiento FTS y semántico.
 
-La comprobación real de este respaldo y el despliegue siguen pendientes. El 12
+La comprobación real del respaldo publicado se completó en una copia temporal
+privada del servidor, sin publicar código adicional ni alterar la aplicación
+activa. Los hashes SHA256 de la sonda y de los módulos RAG modificados coinciden
+con `415849f`. Las cuatro consultas terminaron: pagos y dirección recuperaron
+versiones publicadas; precio recuperó productos publicados. La pregunta sobre
+garantía no obtuvo evidencia suficiente y mantiene la respuesta prudente del
+agente. No se aprobaron ni inventaron condiciones comerciales.
+
+La prueba con semántica reprodujo un único 401 y comprobó que la espera entre
+intentos evita repetirlo en los siguientes turnos. La prueba independiente con
+FTS y recuperación publicada completó todas sus solicitudes con HTTP 200 y sin
+infraestructura inaccesible. Los informes sin contenido se conservaron junto al
+respaldo operativo como `knowledge-after-semantic.json` y
+`knowledge-after-fts.json`. No se enviaron mensajes por WhatsApp ni se escribieron
+datos en Supabase. La función semántica externa permanece sin corregir.
+
+El despliegue sigue pendiente. El 12
 de septiembre la revisión automática rechazó subir el código a GitHub porque el
 repositorio de despliegue es público y solicitó aprobación expresa de esa
 publicación. Se pidió al usuario esa autorización específica. No se intentó
@@ -91,7 +112,7 @@ eludir el bloqueo ni modificar la configuración de despliegue.
 
 Este documento no acredita un despliegue mientras esta sección siga pendiente.
 La autenticación de la búsqueda semántica es un problema externo identificado;
-el respaldo publicado debe verificarse por separado.
+la recuperación alternativa de contenido publicado sí quedó verificada.
 
 Para una reversión de código, preparar una rama de liberación desde la referencia
 de seguridad, verificar otra vez el servicio y actualizar su rama de despliegue
