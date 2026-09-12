@@ -8,6 +8,16 @@ describe("enrutamiento comercial", () => {
     expect(shouldSendCatalog("Quiero que me envíes el catálogo", 2)).toBe(true);
   });
 
+  it.each(["Holac", "Holaa", "Hola Terra", "Buenos días Terra"])("recognizes a short greeting variant: %s", (content) => {
+    expect(shouldSendCatalog(content, 0)).toBe(true);
+  });
+
+  it.each(["Hola, ¿dónde están?", "Holaa, quiero dirección de Cochabamba", "Hola, quiero hablar con un asesor", "Holanda"])(
+    "does not replace a substantive request or unrelated word with the greeting route: %s", (content) => {
+      expect(shouldSendCatalog(content, 0)).toBe(false);
+    },
+  );
+
   it("deja que preguntas cortas lleguen al RAG", () => {
     expect(shouldSendCatalog("¿Cuánto cuesta?", 0)).toBe(false);
     expect(shouldSendCatalog("¿Hacen envíos?", 2)).toBe(false);

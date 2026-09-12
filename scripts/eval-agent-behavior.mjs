@@ -34,13 +34,15 @@ for (let index = 0; index < args.length; index += 1) {
 }
 if (args.includes("--live") && args.includes("--dry-run")) throw new Error("Elija --live o --dry-run.");
 const live = args.includes("--live");
-const model = process.env.OPENAI_MODEL || "gpt-5.6-luna";
 const apiKey = live ? process.env.OPENAI_API_KEY : undefined;
 const configuredBase = live ? process.env.OPENAI_BASE_URL || "https://api.openai.com/v1" : "https://api.openai.com/v1";
 if (live && !apiKey) throw new Error("Evaluación real pendiente: OPENAI_API_KEY no está disponible en el entorno. No se leyó ningún archivo de credenciales.");
 const allowedProviderBases = new Set(["https://api.openai.com/v1", "https://openrouter.ai/api/v1"]);
 const providerBase = configuredBase.replace(/\/$/, "");
 if (live && !allowedProviderBases.has(providerBase)) throw new Error("El proveedor configurado no coincide con los destinos explícitos permitidos para esta evaluación.");
+const core = loadProductionCore(root);
+const modelEnvironment = { model: process.env.OPENAI_MODEL, baseURL: providerBase };
+const modelSettings = core.getAssistantModelSettings(modelEnvironment);
 const fixture = JSON.parse(await readFile(new URL("./fixtures/behavior-eval.json", import.meta.url), "utf8"));
 const selectedCase = valueAfter("--case");
 const scenarios = fixture.scenarios.filter((scenario) => !selectedCase || scenario.id === selectedCase);
@@ -51,11 +53,11 @@ const relativeOutput = relative(cacheRoot, output);
 if (!relativeOutput || relativeOutput.startsWith("..") || resolve(cacheRoot, relativeOutput) !== output) throw new Error("El resultado debe guardarse dentro de .cache/behavior-eval/ del checkout.");
 const report = {
   schemaVersion: 1, startedAt: new Date().toISOString(), mode: live ? "real_model_synthetic_io" : "dry_run_no_model",
-  model: live ? model : null, providerOrigin: live ? new URL(providerBase).origin : null, fixtureNotice: fixture.notice,
+  model: live ? modelSettings.model : null, providerOrigin: live ? new URL(providerBase).origin : null, fixtureNotice: fixture.notice,
+  requestSettings: live ? modelSettings : null,
   scope: { realModel: live, realWhatsApp: false, realDatabase: false, realCommercialKnowledge: false, persistedPromptPublication: false },
   semanticReview: "pending", scenarios: [], usage: { calls: 0, inputTokens: 0, outputTokens: 0 },
 };
-const core = loadProductionCore(root);
 report.sourceHashes = core.sourceHashes;
 report.fixtureSha256 = createHash("sha256").update(JSON.stringify(fixture)).digest("hex");
 let providerFailed = false;
@@ -67,10 +69,7 @@ async function complete({ instructions, history }) {
     response = await fetch(`${providerBase}/responses`, {
       method: "POST", redirect: "error", signal: AbortSignal.timeout(60000),
       headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
-      body: JSON.stringify({
-        model, instructions, input: history.map((message) => ({ role: message.role === "user" ? "user" : "assistant", content: message.content })),
-        max_output_tokens: 220, reasoning: { effort: "none" }, store: false,
-      }),
+      body: JSON.stringify(core.buildAssistantModelRequest({ instructions, history }, modelEnvironment)),
     });
   } catch {
     providerFailed = true;
@@ -91,14 +90,12 @@ async function complete({ instructions, history }) {
   }
   report.usage.inputTokens += payload.usage?.input_tokens ?? 0;
   report.usage.outputTokens += payload.usage?.output_tokens ?? 0;
-  const text = typeof payload.output_text === "string" ? payload.output_text
-    : (payload.output ?? []).filter((item) => item.type === "message").flatMap((item) => item.content ?? []).filter((item) => item.type === "output_text").map((item) => item.text).join("");
-  if (payload.status !== "completed" || !text.trim()) {
+  try { return core.readCompletedAssistantText(payload); }
+  catch {
     providerFailed = true;
     report.providerFailure = { status: "incomplete_or_empty_response" };
     throw new Error("La evaluación recibió una respuesta incompleta o vacía.");
   }
-  return text;
 }
 function evidenceForTurn(result) {
   const { calls, ...safeResult } = result;

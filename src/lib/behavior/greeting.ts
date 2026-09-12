@@ -1,3 +1,5 @@
+import { ADVISOR_NOTICE } from "./instructions";
+
 type GreetingMessage = { role: string; content: string; created_at?: number };
 
 // Conversational choice, in seconds (the message store uses Unix timestamps).
@@ -14,10 +16,25 @@ export function shouldGreetForReply(history: readonly GreetingMessage[]): boolea
 }
 
 /** Decorate the existing reply; never schedule or send an additional message. */
-export function withConversationGreeting(content: string, history: readonly GreetingMessage[]): string {
-  const alreadyGreets = /^[\s¡!👋😊]*(?:hola\b|buenos días\b|buenas (?:tardes|noches)\b)/iu.test(content);
-  const prefix = "¡Hola! 👋\n\n";
-  // Do not truncate an approved map or overflow the provider's existing limit.
-  if (!content.trim() || alreadyGreets || !shouldGreetForReply(history) || content.length + prefix.length > 4096) return content;
-  return prefix + content;
+export function withConversationGreeting(
+  content: string,
+  history: readonly GreetingMessage[],
+  options: { includeAdvisorNotice?: boolean } = {},
+): string {
+  if (!content.trim() || !shouldGreetForReply(history)) return content;
+  const greeting = /^[\s¡!👋😊]*(?:hola(?:\s+de\s+nuevo)?\b|buenos días\b|buenas (?:tardes|noches)\b)[!.,:;\s👋😊]*/iu;
+  if (history.length > 1) {
+    // A returning customer already knows Terra; do not repeat the introduction.
+    const resumed = greeting.test(content) ? content : "¡Hola! 👋\n\n" + content;
+    return resumed.length <= 4096 ? resumed : content;
+  }
+  const body = content.replace(greeting, "")
+    .replace(/^bienvenid[oa]s?\s+a\s+(?:importadora\s+)?terra\b[!.,\s]*/iu, "").trim();
+  const identity = /\basistente virtual\b/iu.test(body.slice(0, 120))
+    ? "¡Hola! 👋 Bienvenido a Terra."
+    : "¡Hola! 👋 Bienvenido a Terra. Soy el asistente virtual de la tienda.";
+  const notice = options.includeAdvisorNotice !== false && !body.includes(ADVISOR_NOTICE) ? ADVISOR_NOTICE : "";
+  const introduced = [identity, body, notice].filter(Boolean).join("\n\n");
+  // Never truncate an approved map or overflow the provider's existing limit.
+  return introduced.length <= 4096 ? introduced : content;
 }

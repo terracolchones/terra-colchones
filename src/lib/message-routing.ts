@@ -11,7 +11,8 @@ export function isCatalogRequest(content: string): boolean {
 }
 
 export function isGreeting(content: string): boolean {
-  return /^(hola|holi|buenas|buenos dias|buenas tardes|buenas noches)[!.\s]*$/i.test(normalize(content));
+  // Recognize common short greeting typos, without swallowing a following question.
+  return /^(hola(?:a|c)?|holi|buenas|buenos dias|buenas tardes|buenas noches)(?:\s+terra)?[!.\s]*$/i.test(normalize(content));
 }
 
 export function isProductIntent(content: string): boolean {

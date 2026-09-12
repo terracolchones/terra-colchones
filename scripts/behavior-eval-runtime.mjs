@@ -12,6 +12,7 @@ const PURE_MODULES = [
   "src/lib/system-prompt.ts", "src/lib/handoff.ts", "src/lib/order-code.ts",
   "src/lib/message-routing.ts", "src/lib/rag/core.ts", "src/lib/rag/policy.ts",
   "src/lib/rag/public-contacts.ts", "src/lib/behavior/output-format.ts",
+  "src/lib/assistant-model.ts",
 ];
 
 export function loadProductionCore(root) {
@@ -43,6 +44,7 @@ export function loadProductionCore(root) {
   return Object.assign({ sourceHashes }, ...[
     "src/lib/meta/handler-core.ts", "src/lib/behavior/respond.ts",
     "src/lib/rag/core.ts", "src/lib/system-prompt.ts", "src/lib/rag/public-contacts.ts",
+    "src/lib/assistant-model.ts",
   ].map((path) => load(resolve(root, path))));
 }
 

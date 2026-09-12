@@ -109,7 +109,9 @@ export function createWebhookProcessor(dependencies: WebhookDependencies): Webho
       diagnostic({ event: "message.mode_suppressed", kind: "text" });
       return;
     }
-    const displayContent = withConversationGreeting(content, getRecentHistory(conversation.id, 20));
+    const displayContent = withConversationGreeting(content, getRecentHistory(conversation.id, 20), {
+      includeAdvisorNotice: !options.humanHandoffAcknowledgment,
+    });
     const id = insertMessage(conversation.id, "assistant", displayContent);
     const { wa_message_id } = await sendTextMessage(phone, displayContent);
     try {
@@ -333,6 +335,17 @@ export function createWebhookProcessor(dependencies: WebhookDependencies): Webho
       return;
     }
     if (requestsGeneralInformation(content) && !hasSensitiveCommerceData(content) && !isControlledCheckoutTopic(content)) {
+      const productCategory = /\b(?:colch[oó]n|colchones|somier(?:es)?|almohada(?:s)?|living|comedor(?:es)?|cocina(?:s)?|mueble(?:s)?)\b/i;
+      const knownCategory = getRecentHistory(conversation.id, 20).some((message) => message.role === "user" && productCategory.test(message.content));
+      if (knownCategory || activeOrder || getCatalogLeadContext(conversation.id)) {
+        // Let the reply use the category or selection already supplied by the customer.
+        await answerKnowledgeQuestion(conversation, phone, activeOrder ?? undefined);
+        return;
+      }
+      if (/\bproductos?\b/i.test(content)) {
+        await sendAndStore(conversation, phone, "Claro 😊 ¿Qué producto tienes en mente?");
+        return;
+      }
       await sendAndStore(conversation, phone, "Claro, ¿qué deseas saber sobre Terra, sus productos o tu pedido?");
       return;
     }
@@ -416,7 +429,7 @@ export function createWebhookProcessor(dependencies: WebhookDependencies): Webho
         await sendAndStore(
           conversation,
           phone,
-          `¡Hola! 👋 Bienvenido a Terra. Explora nuestro catálogo y elige el producto que buscas. ${ADVISOR_NOTICE}`,
+          "Explora nuestro catálogo y elige el producto que buscas.",
         );
       }
       await sendCatalog(conversation, phone, origin);

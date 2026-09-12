@@ -87,6 +87,9 @@ describe("offline Graph acceptance diagnostics, without retries", () => {
     fetchMock.mockResolvedValueOnce(Response.json({ messages: [{ id: "synthetic-cta-id" }] }));
     await sendCatalogCtaMessage("synthetic-recipient", `https://catalog.invalid/?checkout=${PRIVATE}`);
     expect(fetchMock).toHaveBeenCalledTimes(1);
+    const sent = JSON.parse(String(fetchMock.mock.calls[0][1]?.body));
+    expect(sent.interactive.body.text).toBe("Claro 😊 Te comparto nuestro catálogo para que veas los productos. Si encuentras uno que te guste, puedes elegirlo y continuar desde allí.");
+    expect(sent.interactive.action.parameters).toEqual({ display_text: "Ver catálogo", url: `https://catalog.invalid/?checkout=${PRIVATE}` });
     expect(events()[1].kind).toBe("cta_url");
     expect(JSON.stringify(output.mock.calls)).not.toContain(PRIVATE);
   });

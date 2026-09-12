@@ -170,7 +170,7 @@ export async function sendCatalogCtaMessage(
     interactive: {
       type: "cta_url",
       header: { type: "text", text: "Catálogo Terra" },
-      body: { text: "Explora nuestros productos y elige el que más te guste." },
+      body: { text: "Claro 😊 Te comparto nuestro catálogo para que veas los productos. Si encuentras uno que te guste, puedes elegirlo y continuar desde allí." },
       footer: { text: "Atención directa por WhatsApp" },
       action: {
         name: "cta_url",

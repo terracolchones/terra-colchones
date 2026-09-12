@@ -85,7 +85,7 @@ describe("shared processor simulation with fictitious providers", () => {
     expect(result.route).toBe("Atención humana");
     expect(result.modelCalled).toBe(false);
     expect(result.sources).toEqual([]);
-    expect(result.replies).toEqual(["¡Hola! 👋\n\nPerfecto, te conecto con un asesor comercial para ayudarte a avanzar."]);
+    expect(result.replies).toEqual(["¡Hola! 👋 Bienvenido a Terra. Soy el asistente virtual de la tienda.\n\nPerfecto, te conecto con un asesor comercial para ayudarte a avanzar."]);
     expect(result.notes.join(" ")).toContain("El modelo no fue llamado");
   });
 
