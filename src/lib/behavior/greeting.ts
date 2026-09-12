@@ -21,8 +21,13 @@ export function withConversationGreeting(
   history: readonly GreetingMessage[],
   options: { includeAdvisorNotice?: boolean } = {},
 ): string {
-  if (!content.trim() || !shouldGreetForReply(history)) return content;
+  if (!content.trim()) return content;
   const greeting = /^[\s¡!👋😊]*(?:hola(?:\s+de\s+nuevo)?\b|buenos días\b|buenas (?:tardes|noches)\b)[!.,:;\s👋😊]*/iu;
+  if (!shouldGreetForReply(history)) {
+    const continued = content.replace(greeting, "").trimStart();
+    // A model greeting must not restart an ongoing exchange or create an empty send.
+    return continued.trim() ? continued : content;
+  }
   if (history.length > 1) {
     // A returning customer already knows Terra; do not repeat the introduction.
     const resumed = greeting.test(content) ? content : "¡Hola! 👋\n\n" + content;
@@ -33,7 +38,9 @@ export function withConversationGreeting(
   const identity = /\basistente virtual\b/iu.test(body.slice(0, 120))
     ? "¡Hola! 👋 Bienvenido a Terra."
     : "¡Hola! 👋 Bienvenido a Terra. Soy el asistente virtual de la tienda.";
-  const notice = options.includeAdvisorNotice !== false && !body.includes(ADVISOR_NOTICE) ? ADVISOR_NOTICE : "";
+  const normalizedBody = body.normalize("NFD").replace(/\p{Diacritic}/gu, "");
+  const alreadyOffersAdvisor = /\b(?:escribe(?:me|nos)?|escriba(?:me|nos)?|escribir)\s+(?:(?:aqui|en este chat)\s+)?(?:(?:la\s+)?palabra\s+)?["'“”‘’«»]*asesor\b/iu.test(normalizedBody);
+  const notice = options.includeAdvisorNotice !== false && !alreadyOffersAdvisor ? ADVISOR_NOTICE : "";
   const introduced = [identity, body, notice].filter(Boolean).join("\n\n");
   // Never truncate an approved map or overflow the provider's existing limit.
   return introduced.length <= 4096 ? introduced : content;

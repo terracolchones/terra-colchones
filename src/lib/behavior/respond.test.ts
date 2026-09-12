@@ -87,7 +87,8 @@ describe("runtime consumes published behavior and approved context", () => {
       orderStatus: "awaiting_payment", productName: "Sillón de prueba", variantLabel: "Azul",
     });
     expect(f.retrieve.mock.calls[0][1]).toEqual(lead);
-    expect(f.complete.mock.calls[0][0].instructions).toContain("awaiting_payment");
+    expect(f.complete.mock.calls[0][0].instructions).toContain("Se está esperando el pago o su comprobante");
+    expect(f.complete.mock.calls[0][0].instructions).not.toContain("awaiting_payment");
     expect(f.complete.mock.calls[0][0].instructions).toContain("Sillón de prueba · Azul");
     expect(f.complete.mock.calls[0][0].instructions).toContain("Horario sintético");
   });

@@ -30,6 +30,11 @@ El bundle es un respaldo de Git; no representa una copia de la base operativa.
 - Texto cercano dentro de la tarjeta de catálogo existente. Se conservan
   botón, enlace privado, revalidaciones y cantidad de envíos.
 - Cierre breve ante agradecimientos, sin insistir en el paso de compra.
+- Se eliminan saludos iniciales repetidos en conversaciones continuas y se
+  reconocen invitaciones equivalentes a escribir `asesor` sin duplicarlas.
+- El contexto del pedido llega al modelo en español, sin códigos internos;
+  no se deducen confirmaciones cuando el estado es desconocido. Las políticas
+  no deben ampliarse con exclusiones o ejemplos que la fuente no publica.
 - Configuración de modelo compartida entre respuesta real y evaluación.
   GPT-5 mini usa `minimal`, `max_output_tokens: 1536`, verbosidad baja,
   `store: false` y un único intento. Se rechazan respuestas vacías,
@@ -44,10 +49,16 @@ y credencial existentes permanecen en el mismo proveedor.
 La prueba inicial real, con una sola consulta ficticia y cero envíos WhatsApp,
 devolvió `model: openai/gpt-5-mini`, `status: completed` en 1542 ms.
 
-Activación en dos pasos: desplegar primero el código compatible conservando
-el override anterior; evaluar conversaciones ficticias con el modelo nuevo
-solo en ese proceso; cambiar únicamente `OPENAI_MODEL` y redesplegar después
-de validar los resultados. No se leen archivos de secretos ni conversaciones.
+Primero se desplegó `e8c104a` conservando el override anterior. La evaluación
+real del modelo nuevo pasó 210 controles en 14 escenarios / 25 turnos, con
+12 peticiones al proveedor (19.229 tokens de entrada y 1.008 de salida).
+La lectura semántica detectó saludos/avisos repetidos y un código de estado
+en una respuesta: se corrigieron antes de activar el modelo para clientes.
+
+La revisión siguiente se evalúa en una carpeta aislada del servidor, con
+módulos puros y fixtures del commit publicado y su hash verificado. Solo
+después de aprobarla se cambia `OPENAI_MODEL` y se despliega esa versión.
+No se leen archivos de secretos ni conversaciones.
 
 ## Protecciones conservadas
 
@@ -58,8 +69,11 @@ Los mapas publicados, teléfonos y documentos de conocimiento no se editan.
 
 ## Validación
 
+542 pruebas locales pasan en 32 archivos. TypeScript y build correctos;
+lint sin errores, con el aviso previo de exportación anónima en
+`supabase/functions/rag-index/index.ts:28`.
 Resultados finales y commit desplegado se registrarán tras completar la
-evaluación real, la activación y las comprobaciones del servicio.
+evaluación real final, la activación y las comprobaciones del servicio.
 
 ## Reversión
 

@@ -75,7 +75,8 @@ describe("shared processor simulation with fictitious providers", () => {
     expect(result.modelCalled).toBe(true);
     expect(result.sources).toContainEqual({ kind: "knowledge", label: "Métodos de pago ficticios" });
     expect(result.sources.some((source) => source.kind === "catalog")).toBe(true);
-    expect(result.effectiveInstructions).toContain("awaiting_payment");
+    expect(result.effectiveInstructions).toContain("Se está esperando el pago o su comprobante");
+    expect(result.effectiveInstructions).not.toContain("awaiting_payment");
     expect(result.effectiveInstructions).toContain("Dos plazas de prueba");
     expect(result.replies.join(" ")).not.toMatch(/env[ií]a (?:la imagen de )?tu comprobante/i);
   });
