@@ -13,31 +13,39 @@ if (args.includes("--help")) {
   console.log(`Verifica conocimiento publicado y catálogo usando el RAG del candidato.
   node scripts/verify-published-knowledge.mjs --dry-run
   node scripts/verify-published-knowledge.mjs --live
+  node scripts/verify-published-knowledge.mjs --live --semantic
 
 Por defecto es dry-run: fuentes ficticias y ninguna llamada de red.
 --live hereda SUPABASE_URL y SUPABASE_SECRET_KEY, sin leer archivos .env.
 Solo permite lecturas de catálogo publicado, versiones publicadas, sus índices
-y la RPC de búsqueda FTS. Bloquea Meta, modelos, Edge Functions y escrituras.
+y la RPC de búsqueda FTS. --semantic permite además POST a rag-search en el
+mismo Supabase si RAG_SEMANTIC_SEARCH_ENABLED ya está configurado como true.
+Esa función calcula embeddings y consulta el índice; no genera respuestas.
+Bloquea Meta, modelos generativos, otras Edge Functions y escrituras.
 Reutiliza service.ts/catalog-storefront/server.ts/core.ts/policy.ts del candidato.
-No prueba búsqueda semántica ni genera respuestas IA. No muestra contenido,
+Sin --semantic no prueba búsqueda semántica. No muestra contenido,
 identificadores, direcciones, teléfonos, coordenadas ni valores de configuración.
 La evidencia se guarda en .cache/knowledge-verification/ del candidato.`);
   process.exit(0);
 }
-if (args.some((arg) => !["--live", "--dry-run"].includes(arg)) || (args.includes("--live") && args.includes("--dry-run"))) throw new Error("Use --live o --dry-run.");
+if (args.some((arg) => !["--live", "--dry-run", "--semantic"].includes(arg)) || (args.includes("--live") && args.includes("--dry-run"))) throw new Error("Use --live o --dry-run y, opcionalmente, --semantic.");
 const live = args.includes("--live");
+const semanticRequested = args.includes("--semantic");
+const semanticConfigured = live ? process.env.RAG_SEMANTIC_SEARCH_ENABLED === "true" : semanticRequested;
+if (live && semanticRequested && !semanticConfigured) throw new Error("La búsqueda semántica no está habilitada en la configuración heredada; no se cambió esa configuración.");
+const useSemantic = semanticRequested && semanticConfigured;
 const environment = live ? {
   SUPABASE_URL: process.env.SUPABASE_URL,
   SUPABASE_SECRET_KEY: process.env.SUPABASE_SECRET_KEY,
-  NODE_ENV: "production", RAG_SEMANTIC_SEARCH_ENABLED: "false",
+  NODE_ENV: "production", RAG_SEMANTIC_SEARCH_ENABLED: String(useSemantic),
 } : {
   SUPABASE_URL: "https://synthetic-verification.invalid", SUPABASE_SECRET_KEY: "synthetic-non-secret-key",
-  NODE_ENV: "production", RAG_SEMANTIC_SEARCH_ENABLED: "false",
+  NODE_ENV: "production", RAG_SEMANTIC_SEARCH_ENABLED: String(useSemantic),
 };
 const report = {
   schemaVersion: 1, startedAt: new Date().toISOString(), mode: live ? "real_published_read_only" : "synthetic_dry_run",
-  scope: { realKnowledge: live, realCatalog: live, writes: false, meta: false, models: false, semanticSearchExercised: false },
-  semanticSearchConfigured: live ? process.env.RAG_SEMANTIC_SEARCH_ENABLED === "true" : false,
+  scope: { realKnowledge: live, realCatalog: live, writes: false, meta: false, generativeModels: false, embeddingFunctionRequestAttempted: false, semanticSearchExercised: false },
+  semanticSearchConfigured: semanticConfigured, semanticSearchRequested: semanticRequested,
   sourceHashes: {}, requests: [], queries: [], suppressedDiagnostics: 0,
   localKnowledge: { read: false, exists: false, markedDraft: false },
 };
@@ -87,8 +95,8 @@ function syntheticResponse(url, rpcBody) {
     id: "synthetic-product", name: "Colchón ficticio", slug: "colchon-ficticio", category: "Colchones", description: "Colchón ficticio para verificación", published: true,
     price_from: 999, availability: "available", catalog_variants: [], catalog_product_images: [],
   }];
-  if (table === "match_terra_rag_chunks") {
-    const query = QUERIES.find(({ text }) => text === rpcBody.query_text);
+  if (table === "match_terra_rag_chunks" || table === "rag-search") {
+    const query = QUERIES.find(({ text }) => text === (rpcBody.query_text ?? rpcBody.query));
     const content = {
       garantia: "La garantía ficticia cubre defectos de fabricación durante 12 meses.",
       formas_pago: "Las formas de pago ficticias permiten pagar mediante transferencia o al recibir.",
@@ -97,7 +105,7 @@ function syntheticResponse(url, rpcBody) {
     data = content ? [{ id: `synthetic-chunk-${query.id}`, source_kind: "knowledge", catalog_product_id: null, title: query.id, content, score: 1 }]
       : [{ id: "synthetic-catalog-chunk", source_kind: "catalog", catalog_product_id: "synthetic-product", title: "Colchón ficticio", content: "Colchón ficticio con precio publicado", score: 1 }];
   }
-  return new Response(JSON.stringify(data), { status: 200, headers: { "Content-Type": "application/json", "Content-Range": `0-${Math.max(0, data.length - 1)}/${data.length}` } });
+  return new Response(JSON.stringify(table === "rag-search" ? { results: data } : data), { status: 200, headers: { "Content-Type": "application/json", "Content-Range": `0-${Math.max(0, data.length - 1)}/${data.length}` } });
 }
 
 async function readOnlyFetch(input, options = {}) {
@@ -119,13 +127,29 @@ async function readOnlyFetch(input, options = {}) {
     try { rpcBody = JSON.parse(options.body ?? await inputRequest?.clone().text() ?? "{}"); } catch { rpcBody = {}; }
     permitted = allowedQueryText.has(rpcBody.query_text) && rpcBody.query_embedding === null && rpcBody.match_count === 8;
   }
+  if (method === "POST" && url.pathname === "/functions/v1/rag-search" && useSemantic) {
+    try { rpcBody = JSON.parse(options.body ?? await inputRequest?.clone().text() ?? "{}"); } catch { rpcBody = {}; }
+    permitted = Object.keys(rpcBody).length === 1 && allowedQueryText.has(rpcBody.query);
+  }
   if (!permitted) throw new Error("Operación bloqueada: únicamente lecturas comerciales aprobadas y búsqueda FTS.");
   const record = { operation: table, method, status: null, available: false };
   report.requests.push(record);
+  if (table === "rag-search") {
+    report.scope.embeddingFunctionRequestAttempted = live;
+    report.scope.semanticSearchExercised = live;
+  }
   try {
     const response = live ? await fetch(input, { ...options, redirect: "error", signal: AbortSignal.timeout(20000) }) : syntheticResponse(url, rpcBody);
     record.status = response.status;
     record.available = response.ok;
+    if (response.ok && ["rag-search", "match_terra_rag_chunks"].includes(table)) {
+      try {
+        const payload = await response.clone().json();
+        const results = table === "rag-search" ? payload?.results : payload;
+        record.resultEnvelopeValid = Array.isArray(results);
+        record.returnedSourceCount = Array.isArray(results) ? results.length : null;
+      } catch { record.resultEnvelopeValid = false; record.returnedSourceCount = null; }
+    }
     return response;
   } catch { throw new Error("Lectura comercial no disponible; detalles remotos omitidos."); }
 }
@@ -198,9 +222,14 @@ try {
         kind: source.kind, label: genericLabel(source.label, source.kind),
         publishedIndexVerified: source.kind === "knowledge" ? publicationInventoryComplete && publishedChunkIds.has(source.id.replace(/^knowledge-/, "")) : null,
       }));
+      const requests = report.requests.slice(before);
+      const semanticSucceeded = requests.some((request) => request.operation === "rag-search" && request.available && request.resultEnvelopeValid);
+      const ftsSucceeded = requests.some((request) => request.operation === "match_terra_rag_chunks" && request.available && request.resultEnvelopeValid);
       report.queries.push({ id: query.id, status: "completed", contextAvailable: Boolean(result.context.trim()), sourceCount: sources.length, sources,
         answerSupportedByPolicy: !policy.requiresHumanHandoffForQuery(query.text, result.sources),
-        indexRequestSucceeded: report.requests.slice(before).some((request) => request.operation === "match_terra_rag_chunks" && request.available),
+        semanticRequestSucceeded: semanticSucceeded, indexRequestSucceeded: semanticSucceeded || ftsSucceeded,
+        retrievalPath: semanticSucceeded ? "semantic_index" : ftsSucceeded ? "fts_index" : "lexical_fallback",
+        semanticFallbackUsed: useSemantic && !semanticSucceeded,
       });
     } catch { report.queries.push({ id: query.id, status: "unavailable", sourceCount: null, contextAvailable: false }); }
   }
