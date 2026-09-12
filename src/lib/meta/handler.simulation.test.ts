@@ -22,6 +22,7 @@ const fixture = vi.hoisted(() => ({
     getCatalogLeadContext: vi.fn(),
     getConversationById: vi.fn(),
     getLatestActiveCatalogOrderForConversation: vi.fn(),
+    getUnambiguousActiveCatalogOrderForConversation: vi.fn(),
     getLocationRequestedCatalogOrderForConversation: vi.fn(),
     getOrCreateConversation: vi.fn(),
     getRecentHistory: vi.fn(),
@@ -121,6 +122,7 @@ beforeEach(() => {
   });
   fixture.db.setMode.mockImplementation((_id: number, mode: "AI" | "HUMAN") => { fixture.mode = mode; });
   fixture.db.getLatestActiveCatalogOrderForConversation.mockReturnValue(null);
+  fixture.db.getUnambiguousActiveCatalogOrderForConversation.mockReturnValue(undefined);
   fixture.db.getLocationRequestedCatalogOrderForConversation.mockReturnValue(null);
   fixture.db.getCatalogLeadContext.mockReturnValue(null);
   fixture.db.createCatalogCheckoutSession.mockReturnValue("synthetic-checkout-token");
@@ -320,9 +322,9 @@ describe("D1-D5 safety regressions", () => {
     expect(fixture.db.updateMessageWaId).toHaveBeenCalledTimes(1);
   });
 
-  it("D3: an image received in HUMAN mode is recorded passively, without payment mutation or acknowledgment", async () => {
+  it("D3: HUMAN records a proof against its unambiguous awaiting-payment order without approval or acknowledgment", async () => {
     fixture.mode = "HUMAN";
-    fixture.db.getLatestActiveCatalogOrderForConversation.mockReturnValue(order());
+    fixture.db.getUnambiguousActiveCatalogOrderForConversation.mockReturnValue(order());
     await processWebhookPayload(payload({
       id: "synthetic-image", from: fixture.phone, type: "image", image: { id: "synthetic-media-not-downloadable" },
     }));
@@ -331,13 +333,13 @@ describe("D1-D5 safety regressions", () => {
     expect(fixture.mode).toBe("HUMAN");
     expect(fixture.db.insertMessage).toHaveBeenCalledExactlyOnceWith(1, "user", "Comprobante de pago recibido.", "synthetic-image");
     expect(fixture.db.getLatestActiveCatalogOrderForConversation).not.toHaveBeenCalled();
-    expect(fixture.db.markCatalogOrderPaymentProof).not.toHaveBeenCalled();
+    expect(fixture.db.markCatalogOrderPaymentProof).toHaveBeenCalledExactlyOnceWith("synthetic-order-alpha", { humanConversationId: 1 });
     expectNoDelivery();
   });
 
-  it("D4: a location received in HUMAN mode is recorded passively, without order mutation or a payment QR", async () => {
+  it("D4: HUMAN records native GPS only for the unambiguous confirmed order without sending QR", async () => {
     fixture.mode = "HUMAN";
-    fixture.db.getLocationRequestedCatalogOrderForConversation.mockReturnValue(order("awaiting_location"));
+    fixture.db.getUnambiguousActiveCatalogOrderForConversation.mockReturnValue({ ...order("awaiting_location"), location_requested: 0 });
     await processWebhookPayload(payload({
       id: "synthetic-location", from: fixture.phone, type: "location",
       // Fictitious neutral coordinates, never read from any customer's location.
@@ -348,9 +350,100 @@ describe("D1-D5 safety regressions", () => {
     expect(fixture.mode).toBe("HUMAN");
     expect(fixture.db.insertMessage).toHaveBeenCalledExactlyOnceWith(1, "user", "Ubicación de entrega recibida.", "synthetic-location");
     expect(fixture.db.getLocationRequestedCatalogOrderForConversation).not.toHaveBeenCalled();
+    expect(fixture.db.saveCatalogOrderLocation).toHaveBeenCalledExactlyOnceWith("synthetic-order-alpha", {
+      latitude: 0, longitude: 0, name: "Synthetic fixture", address: null,
+    }, { humanConversationId: 1 });
+    expectNoDelivery();
+  });
+
+  it("HUMAN records an exact customer confirmation once without a GPS request or acknowledgment", async () => {
+    fixture.mode = "HUMAN";
+    fixture.db.claimCatalogOrder.mockReturnValue({ result: "claimed", order: order("awaiting_location") });
+    const event = payload(textMessage("synthetic-human-confirmation", "Hola Terra, confirmo mi pedido #T-TEST-DEMO"));
+    await processWebhookPayload(event);
+    await processWebhookPayload(event);
+    expect(fixture.db.claimCatalogOrder).toHaveBeenCalledExactlyOnceWith("T-TEST-DEMO", 1);
+    expect(fixture.mode).toBe("HUMAN");
+    expectNoDelivery();
+  });
+
+  it.each(["No confirmo mi pedido #T-TEST-DEMO", "¿Cómo está mi pedido #T-TEST-DEMO?", "asesor"])(
+    "HUMAN does not infer order confirmation from a mention: %s", async (content) => {
+      fixture.mode = "HUMAN";
+      await processWebhookPayload(payload(textMessage("synthetic-human-mention", content)));
+      expect(fixture.db.claimCatalogOrder).not.toHaveBeenCalled();
+      expectNoDelivery();
+    },
+  );
+
+  it("HUMAN leaves a foreign-chat confirmation unclaimed and stays silent", async () => {
+    fixture.mode = "HUMAN";
+    fixture.db.claimCatalogOrder.mockReturnValue({ result: "belongs_to_other_chat", order: order("awaiting_chat_confirmation") });
+    await processWebhookPayload(payload(textMessage("synthetic-foreign-confirmation", "Hola Terra, confirmo mi pedido #T-TEST-DEMO")));
+    expect(fixture.db.claimCatalogOrder).toHaveBeenCalledExactlyOnceWith("T-TEST-DEMO", 1);
     expect(fixture.db.saveCatalogOrderLocation).not.toHaveBeenCalled();
     expectNoDelivery();
   });
+
+  it.each([
+    undefined, // Includes several possible orders: no arbitrary latest-order fallback.
+    { ...order("awaiting_chat_confirmation") },
+    { ...order("awaiting_payment") },
+    { ...order("awaiting_location"), conversation_id: 2 },
+  ])("HUMAN does not attach GPS without a unique confirmed order in its own chat: %j", async (candidate) => {
+    fixture.mode = "HUMAN";
+    fixture.db.getLatestActiveCatalogOrderForConversation.mockReturnValue(order("awaiting_location"));
+    fixture.db.getUnambiguousActiveCatalogOrderForConversation.mockReturnValue(candidate);
+    await processWebhookPayload(payload({ id: "synthetic-human-gps-ambiguous", from: fixture.phone, type: "location", location: { latitude: 0, longitude: 0 } }));
+    expect(fixture.db.saveCatalogOrderLocation).not.toHaveBeenCalled();
+    expect(fixture.db.getLatestActiveCatalogOrderForConversation).not.toHaveBeenCalled();
+    expectNoDelivery();
+  });
+
+  it.each([undefined, order("awaiting_location"), { ...order("awaiting_payment"), conversation_id: 2 }])(
+    "HUMAN does not mark proof without its unambiguous awaiting-payment order: %j", async (candidate) => {
+      fixture.mode = "HUMAN";
+      fixture.db.getUnambiguousActiveCatalogOrderForConversation.mockReturnValue(candidate);
+      await processWebhookPayload(payload({ id: "synthetic-human-proof-ambiguous", from: fixture.phone, type: "image", image: { id: "synthetic-media" } }));
+      expect(fixture.db.markCatalogOrderPaymentProof).not.toHaveBeenCalled();
+      expectNoDelivery();
+    },
+  );
+
+  it("HUMAN native GPS replay cannot record twice or trigger a QR", async () => {
+    fixture.mode = "HUMAN";
+    fixture.db.getUnambiguousActiveCatalogOrderForConversation.mockReturnValue(order("awaiting_location"));
+    const event = payload({ id: "synthetic-human-gps-replay", from: fixture.phone, type: "location", location: { latitude: 0, longitude: 0 } });
+    await processWebhookPayload(event);
+    await processWebhookPayload(event);
+    expect(fixture.db.saveCatalogOrderLocation).toHaveBeenCalledTimes(1);
+    expectNoDelivery();
+  });
+
+  it.each([
+    textMessage("synthetic-wrong-channel-confirm", "Hola Terra, confirmo mi pedido #T-TEST-DEMO"),
+    { id: "synthetic-wrong-channel-gps", from: fixture.phone, type: "location", location: { latitude: 0, longitude: 0 } },
+    { id: "synthetic-wrong-channel-proof", from: fixture.phone, type: "image", image: { id: "synthetic-media" } },
+  ])("HUMAN does not record customer facts from an unauthorized channel: %j", async (message) => {
+    fixture.mode = "HUMAN";
+    await processWebhookPayload(payload(message, "synthetic-other-channel"));
+    expect(fixture.db.markMessageProcessed).not.toHaveBeenCalled();
+    expect(fixture.db.claimCatalogOrder).not.toHaveBeenCalled();
+    expect(fixture.db.saveCatalogOrderLocation).not.toHaveBeenCalled();
+    expect(fixture.db.markCatalogOrderPaymentProof).not.toHaveBeenCalled();
+    expect(fixture.db.insertMessage).not.toHaveBeenCalled();
+    expectNoDelivery();
+  });
+
+  it.each([{ latitude: 91, longitude: 0 }, { latitude: 0, longitude: 181 }])(
+    "HUMAN rejects impossible native GPS values: %j", async (location) => {
+      fixture.mode = "HUMAN";
+      await processWebhookPayload(payload({ id: "synthetic-invalid-gps", from: fixture.phone, type: "location", location }));
+      expect(fixture.db.saveCatalogOrderLocation).not.toHaveBeenCalled();
+      expect(fixture.db.insertMessage).not.toHaveBeenCalled();
+      expectNoDelivery();
+    },
+  );
 
   it("D5: a pending RAG response is suppressed after an operator switches the chat to HUMAN", async () => {
     const reply = deferred<{ content: string; needsAdvisorConfirmation: boolean }>();

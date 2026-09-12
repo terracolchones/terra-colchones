@@ -18,6 +18,7 @@ const fixture = vi.hoisted(() => ({
     getCatalogLeadContext: vi.fn(),
     getConversationById: vi.fn(),
     getLatestActiveCatalogOrderForConversation: vi.fn(),
+    getUnambiguousActiveCatalogOrderForConversation: vi.fn(),
     getLocationRequestedCatalogOrderForConversation: vi.fn(),
     getOrCreateConversation: vi.fn(),
     getRecentHistory: vi.fn(),
@@ -111,6 +112,7 @@ beforeEach(() => {
   });
   fixture.db.setMode.mockImplementation((_id: number, mode: "AI" | "HUMAN") => { fixture.mode = mode; });
   fixture.db.getLatestActiveCatalogOrderForConversation.mockReturnValue(null);
+  fixture.db.getUnambiguousActiveCatalogOrderForConversation.mockReturnValue(undefined);
   fixture.db.getLocationRequestedCatalogOrderForConversation.mockReturnValue(null);
   fixture.db.getCatalogLeadContext.mockReturnValue(null);
   fixture.db.createCatalogCheckoutSession.mockReturnValue("synthetic-behavior-checkout");

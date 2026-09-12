@@ -20,7 +20,7 @@ export function sendPaymentQr(
   conversationId: number,
   phone: string,
   caption: string | undefined,
-  options: { requireAiMode: true },
+  options: { requireAiMode: true } | { requireHumanMode: true },
 ): Promise<{ waMessageId: string } | null>;
 export function sendPaymentQr(
   conversationId: number,
@@ -32,15 +32,16 @@ export async function sendPaymentQr(
   conversationId: number,
   phone: string,
   caption = PAYMENT_CAPTION,
-  options: { requireAiMode?: boolean } = {},
+  options: { requireAiMode?: boolean; requireHumanMode?: boolean } = {},
 ): Promise<{ waMessageId: string } | null> {
+  const requiredMode = options.requireAiMode ? "AI" : options.requireHumanMode ? "HUMAN" : null;
   let qr: Awaited<ReturnType<typeof getPaymentQrSignedUrl>>;
   try {
-    if (options.requireAiMode && getConversationById(conversationId)?.mode !== "AI") return null;
+    if (requiredMode && getConversationById(conversationId)?.mode !== requiredMode) return null;
     qr = await getPaymentQrSignedUrl();
     // El operador puede tomar el chat mientras se obtiene la URL firmada.
     // El envío manual del panel conserva su autorización explícita en HUMAN.
-    if (options.requireAiMode && getConversationById(conversationId)?.mode !== "AI") return null;
+    if (requiredMode && getConversationById(conversationId)?.mode !== requiredMode) return null;
   } catch {
     throw new PaymentQrPreparationError();
   }

@@ -142,6 +142,7 @@ export async function simulateBehavior(input: SimulationInput): Promise<Simulati
     getCatalogLeadContext: () => lead ? { ...lead } : null,
     setCatalogLeadContext: (_id, productId, variantId) => { lead = { productId, variantId }; },
     getLatestActiveCatalogOrderForConversation: () => activeOrder ? { ...activeOrder } : undefined,
+    getUnambiguousActiveCatalogOrderForConversation: () => activeOrder ? { ...activeOrder } : undefined,
     getLocationRequestedCatalogOrderForConversation: () => activeOrder?.status === "awaiting_location" ? { ...activeOrder } : undefined,
     claimCatalogOrder: (code) => {
       if (code !== SYNTHETIC_ORDER_CODE) return { result: "not_found", order: undefined };

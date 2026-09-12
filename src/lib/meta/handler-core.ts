@@ -13,6 +13,7 @@ export interface WebhookDependencies {
     | "getCatalogLeadContext"
     | "getConversationById"
     | "getLatestActiveCatalogOrderForConversation"
+    | "getUnambiguousActiveCatalogOrderForConversation"
     | "getLocationRequestedCatalogOrderForConversation"
     | "getOrCreateConversation"
     | "getRecentHistory"
@@ -43,7 +44,7 @@ export type WebhookProcessor = (payload: unknown, origin?: string) => Promise<vo
 
 export function createWebhookProcessor(dependencies: WebhookDependencies): WebhookProcessor {
   const {
-    db: { claimCatalogOrder, createCatalogCheckoutSession, getCatalogLeadContext, getConversationById, getLatestActiveCatalogOrderForConversation, getLocationRequestedCatalogOrderForConversation, getOrCreateConversation, getRecentHistory, insertMessage, markMessageProcessed, markCatalogOrderPaymentProof, saveCatalogOrderLocation, setCatalogLeadContext, setMode, updateMessageWaId, wasMessageProcessed },
+    db: { claimCatalogOrder, createCatalogCheckoutSession, getCatalogLeadContext, getConversationById, getLatestActiveCatalogOrderForConversation, getUnambiguousActiveCatalogOrderForConversation, getLocationRequestedCatalogOrderForConversation, getOrCreateConversation, getRecentHistory, insertMessage, markMessageProcessed, markCatalogOrderPaymentProof, saveCatalogOrderLocation, setCatalogLeadContext, setMode, updateMessageWaId, wasMessageProcessed },
     getProductForCatalogLead, parseCatalogLeadContext,
     dispatchCatalogLocationRequest, dispatchCatalogPaymentQr, generateAssistantReply,
     sendCatalogCtaMessage, sendTextMessage, diagnostic, messageRef,
@@ -214,7 +215,15 @@ export function createWebhookProcessor(dependencies: WebhookDependencies): Webho
     const conversation = getOrCreateConversation(phone, contactName);
     const messageCountBefore = getRecentHistory(conversation.id, 1).length;
     insertMessage(conversation.id, "user", content, waMessageId);
-    if (!canAutomate(conversation)) return;
+    if (!canAutomate(conversation)) {
+      // HUMAN pauses outbound automation, not an explicit customer's confirmation.
+      // This synchronous branch does not request GPS or send any acknowledgment.
+      if (getConversationById(conversation.id)?.mode === "HUMAN" && isOrderConfirmationRequest(content)) {
+        const code = parseOrderConfirmationCode(content);
+        if (code) claimCatalogOrder(code, conversation.id);
+      }
+      return;
+    }
 
     // Las preferencias del cliente preceden a cualquier selección o acción.
     if (requestsHumanSupport(content)) {
@@ -417,12 +426,24 @@ export function createWebhookProcessor(dependencies: WebhookDependencies): Webho
     const location = isRecord(message.location) ? message.location : undefined;
     const latitude = typeof location?.latitude === "number" ? location.latitude : Number.NaN;
     const longitude = typeof location?.longitude === "number" ? location.longitude : Number.NaN;
-    if (!waMessageId || !phone || !Number.isFinite(latitude) || !Number.isFinite(longitude)) return;
+    if (!waMessageId || !phone || !Number.isFinite(latitude) || !Number.isFinite(longitude)
+      || Math.abs(latitude) > 90 || Math.abs(longitude) > 180) return;
     if (!reserveIncomingMessage(waMessageId, "location")) return;
 
     const conversation = getOrCreateConversation(phone, contactName);
     insertMessage(conversation.id, "user", "Ubicación de entrega recibida.", waMessageId);
-    if (!canAutomate(conversation)) return;
+    if (!canAutomate(conversation)) {
+      if (getConversationById(conversation.id)?.mode !== "HUMAN") return;
+      const manualOrder = getUnambiguousActiveCatalogOrderForConversation(conversation.id);
+      if (manualOrder?.status === "awaiting_location" && manualOrder.conversation_id === conversation.id) {
+        saveCatalogOrderLocation(manualOrder.id, {
+          latitude, longitude,
+          name: typeof location?.name === "string" ? location.name : null,
+          address: typeof location?.address === "string" ? location.address : null,
+        }, { humanConversationId: conversation.id });
+      }
+      return;
+    }
     const order = getLocationRequestedCatalogOrderForConversation(conversation.id);
     if (!order) {
       await sendAndStore(conversation, phone, "Primero confirma tu pedido desde el catálogo para que podamos usar tu ubicación.");
@@ -453,7 +474,14 @@ export function createWebhookProcessor(dependencies: WebhookDependencies): Webho
 
     const conversation = getOrCreateConversation(phone, contactName);
     insertMessage(conversation.id, "user", "Comprobante de pago recibido.", waMessageId);
-    if (!canAutomate(conversation)) return;
+    if (!canAutomate(conversation)) {
+      if (getConversationById(conversation.id)?.mode !== "HUMAN") return;
+      const manualOrder = getUnambiguousActiveCatalogOrderForConversation(conversation.id);
+      if (manualOrder?.status === "awaiting_payment" && manualOrder.conversation_id === conversation.id) {
+        markCatalogOrderPaymentProof(manualOrder.id, { humanConversationId: conversation.id });
+      }
+      return;
+    }
     const order = getLatestActiveCatalogOrderForConversation(conversation.id);
     if (!order || order.status !== "awaiting_payment") return;
     markCatalogOrderPaymentProof(order.id);

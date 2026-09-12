@@ -99,11 +99,17 @@ export function ConversationPanel({ conversation, onConversationChanged, onDelet
 
   async function sendPaymentQr() {
     if (sendingQr || conversation.mode !== "HUMAN") return;
+    if (!conversation.latest_order) {
+      setError("Primero confirma el producto desde el catálogo para vincular el QR a un pedido.");
+      return;
+    }
 
     setSendingQr(true);
     setError(null);
     try {
-      const response = await fetch(`/api/payment-qr/${conversation.id}`, { method: "POST" });
+      const response = await fetch(`/api/payment-qr/${conversation.id}`, {
+        method: "POST", headers: { "X-Terra-Order-Code": conversation.latest_order.public_code },
+      });
       const data = (await response.json()) as { ok?: boolean; error?: string; outside24h?: boolean };
       if (!response.ok || !data.ok) {
         setError(data.outside24h ? "Fuera de la ventana de 24h: no se puede enviar el QR." : data.error || "No se pudo enviar el QR");

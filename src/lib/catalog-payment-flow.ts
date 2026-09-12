@@ -9,14 +9,20 @@ import { PaymentQrPreparationError, sendPaymentQr } from "@/lib/payment-qr";
 export type CatalogPaymentQrDispatch = "sent" | "already_sent" | "in_progress" | "not_ready" | "failed" | "suppressed" | "uncertain" | "accepted_persistence_failed";
 
 /** Envía el QR una sola vez y confirma la transición de pago solo tras éxito. */
-export async function dispatchCatalogPaymentQr(orderId: string): Promise<CatalogPaymentQrDispatch> {
+export async function dispatchCatalogPaymentQr(
+  orderId: string,
+  manual?: { mode: "HUMAN"; conversationId: number },
+): Promise<CatalogPaymentQrDispatch> {
   const reservation = reserveCatalogPaymentQrDelivery(orderId);
   if (reservation.reservation !== "reserved") return reservation.reservation;
 
   const order = reservation.order;
   if (!order?.conversation_id) return "not_ready";
+  // Manual and automatic sends share the same durable reservation. A stale
+  // operator request cannot send a QR into another conversation.
+  if (manual && order.conversation_id !== manual.conversationId) return "suppressed";
   const conversation = getConversationById(order.conversation_id);
-  if (!conversation || conversation.mode !== "AI") {
+  if (!conversation || conversation.mode !== (manual?.mode ?? "AI")) {
     failCatalogPaymentQrDelivery(order.id); // No se intentó enviar a Meta.
     return conversation ? "suppressed" : "not_ready";
   }
@@ -27,7 +33,7 @@ export async function dispatchCatalogPaymentQr(orderId: string): Promise<Catalog
       conversation.id,
       conversation.phone,
       `✅ Pedido #${order.public_code} listo para coordinar entrega. Escanea este código QR para realizar el pago y envía tu comprobante por este chat. El pago será revisado antes del despacho.`,
-      { requireAiMode: true },
+      manual ? { requireHumanMode: true } : { requireAiMode: true },
     );
   } catch (error) {
     if (error instanceof PaymentQrPreparationError) {

@@ -342,6 +342,16 @@ export function getLatestActiveCatalogOrderForConversation(conversationId: numbe
     .get(asPositiveId(conversationId)) as CatalogOrder | undefined;
 }
 
+/** An uncorrelated native attachment must not be assigned to an arbitrary order. */
+export function getUnambiguousActiveCatalogOrderForConversation(conversationId: number): CatalogOrder | undefined {
+  const rows = getDatabase().prepare(
+    `SELECT * FROM catalog_orders
+     WHERE conversation_id = ? AND status IN ('awaiting_chat_confirmation', 'awaiting_location', 'awaiting_payment', 'payment_proof_received')
+     LIMIT 2`,
+  ).all(asPositiveId(conversationId)) as CatalogOrder[];
+  return rows.length === 1 ? rows[0] : undefined;
+}
+
 export type CatalogOrderClaimResult = "claimed" | "already_confirmed" | "not_found" | "belongs_to_other_chat";
 
 /** Vincula el código escrito por WhatsApp al chat que realmente lo envió. */
@@ -446,8 +456,20 @@ export function getLocationRequestedCatalogOrderForConversation(conversationId: 
 export function saveCatalogOrderLocation(
   orderId: string,
   location: { latitude: number; longitude: number; name?: string | null; address?: string | null },
+  manual?: { humanConversationId: number },
 ): { saved: boolean; order: CatalogOrder | undefined } {
   const db = getDatabase();
+  if (manual) {
+    const conversationId = asPositiveId(manual.humanConversationId);
+    const result = db.prepare(
+      `UPDATE catalog_orders SET latitude = ?, longitude = ?, location_name = ?, location_address = ?, updated_at = unixepoch()
+       WHERE id = ? AND conversation_id = ? AND status = 'awaiting_location'
+         AND latitude IS NULL AND longitude IS NULL
+         AND EXISTS (SELECT 1 FROM conversations WHERE id = ? AND mode = 'HUMAN')
+         AND (SELECT COUNT(*) FROM catalog_orders WHERE conversation_id = ? AND status IN ('awaiting_chat_confirmation', 'awaiting_location', 'awaiting_payment', 'payment_proof_received')) = 1`,
+    ).run(location.latitude, location.longitude, location.name ?? null, location.address ?? null, orderId, conversationId, conversationId, conversationId);
+    return { saved: result.changes > 0, order: result.changes > 0 ? getCatalogOrderById(orderId) : undefined };
+  }
   const result = db.prepare(
     `UPDATE catalog_orders
      SET latitude = ?, longitude = ?, location_name = ?, location_address = ?,
@@ -471,10 +493,7 @@ export function reserveCatalogPaymentQrDelivery(
     const order = getCatalogOrderById(orderId);
     if (
       !order
-      || order.status !== "awaiting_location"
       || !order.conversation_id
-      || order.latitude === null
-      || order.longitude === null
     ) {
       return { reservation: "not_ready" as const, order };
     }
@@ -487,6 +506,12 @@ export function reserveCatalogPaymentQrDelivery(
     // No recuperar por tiempo un QR que pudo haber sido aceptado por Meta.
     if (deliveryState === "in_progress") {
       return { reservation: "in_progress" as const, order };
+    }
+
+    // The existing QR outcome prevails even after the order advances to payment.
+    // Only a new attempt needs the confirmed order and its recorded GPS.
+    if (order.status !== "awaiting_location" || order.latitude === null || order.longitude === null) {
+      return { reservation: "not_ready" as const, order };
     }
 
     if (existing) {
@@ -523,8 +548,18 @@ export function failCatalogPaymentQrDelivery(orderId: string): void {
   ).run(orderId);
 }
 
-export function markCatalogOrderPaymentProof(orderId: string): CatalogOrder | undefined {
+export function markCatalogOrderPaymentProof(orderId: string, manual?: { humanConversationId: number }): CatalogOrder | undefined {
   const db = getDatabase();
+  if (manual) {
+    const conversationId = asPositiveId(manual.humanConversationId);
+    const result = db.prepare(
+      `UPDATE catalog_orders SET status = 'payment_proof_received', updated_at = unixepoch()
+       WHERE id = ? AND conversation_id = ? AND status = 'awaiting_payment'
+         AND EXISTS (SELECT 1 FROM conversations WHERE id = ? AND mode = 'HUMAN')
+         AND (SELECT COUNT(*) FROM catalog_orders WHERE conversation_id = ? AND status IN ('awaiting_chat_confirmation', 'awaiting_location', 'awaiting_payment', 'payment_proof_received')) = 1`,
+    ).run(orderId, conversationId, conversationId, conversationId);
+    return result.changes > 0 ? getCatalogOrderById(orderId) : undefined;
+  }
   db.prepare(
     "UPDATE catalog_orders SET status = 'payment_proof_received', updated_at = unixepoch() WHERE id = ? AND status = 'awaiting_payment'",
   ).run(orderId);
