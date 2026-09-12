@@ -1,6 +1,6 @@
 import type { Conversation } from "@/lib/db";
 import type { MessageKind, MessageStatus } from "@/lib/meta/diagnostics";
-import { HUMAN_HANDOFF_REPLY } from "@/lib/handoff";
+import { HUMAN_HANDOFF_REPLY, contextualAdvisorConfirmationReply } from "@/lib/handoff";
 import { containsUnsafeCheckoutReply, hasSensitiveCommerceData, isControlledCheckoutTopic, isKnowledgeQuestion, requestsGeneralInformation, requestsHumanSupport, shouldSendCatalog, isIdentityQuestion, declinesHumanSupport, isAcknowledgment, requestsOrderChange, isCatalogRequest, requestsCheckoutAction, isOrderConfirmationRequest } from "@/lib/message-routing";
 import { ADVISOR_NOTICE } from "@/lib/behavior/instructions";
 import { shouldGreetForReply, withConversationGreeting } from "@/lib/behavior/greeting";
@@ -190,15 +190,17 @@ export function createWebhookProcessor(dependencies: WebhookDependencies): Webho
     let content: string;
     try {
       const startedAt = Date.now();
+      const history = getRecentHistory(conversation.id, 20);
+      const query = [...history].reverse().find((message) => message.role === "user")?.content;
       const reply = await generateAssistantReply(
-        getRecentHistory(conversation.id, 20),
+        history,
         activeOrder ? { productId: activeOrder.product_id, variantId: activeOrder.variant_id } : getCatalogLeadContext(conversation.id),
         activeOrder ? { orderStatus: activeOrder.status, productName: activeOrder.product_name, variantLabel: activeOrder.variant_label } : {},
       );
       diagnostic({ event: "rag.completed", elapsed_ms: Date.now() - startedAt });
-      content = reply.needsAdvisorConfirmation || containsUnsafeCheckoutReply(reply.content)
+      content = containsUnsafeCheckoutReply(reply.content)
         ? `Para darte ese dato con precisión, un asesor debe confirmarlo. ${ADVISOR_NOTICE}`
-        : reply.content;
+        : reply.needsAdvisorConfirmation ? contextualAdvisorConfirmationReply(query) : reply.content;
     } catch {
       diagnostic({ event: "rag.failed" });
       content = `No pudimos consultar esa información ahora. ${ADVISOR_NOTICE}`;
@@ -429,7 +431,7 @@ export function createWebhookProcessor(dependencies: WebhookDependencies): Webho
         await sendAndStore(
           conversation,
           phone,
-          "Explora nuestro catálogo y elige el producto que buscas.",
+          "Te comparto el catálogo.",
         );
       }
       await sendCatalog(conversation, phone, origin);

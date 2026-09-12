@@ -37,7 +37,7 @@ export function withConversationGreeting(
     .replace(/^bienvenid[oa]s?\s+a\s+(?:importadora\s+)?terra\b[!.,\s]*/iu, "").trim();
   const identity = /\basistente virtual\b/iu.test(body.slice(0, 120))
     ? "¡Hola! 👋 Bienvenido a Terra."
-    : "¡Hola! 👋 Bienvenido a Terra. Soy el asistente virtual de la tienda.";
+    : "¡Hola! 👋 Bienvenido a Terra. Soy el asistente virtual.";
   const normalizedBody = body.normalize("NFD").replace(/\p{Diacritic}/gu, "");
   const alreadyOffersAdvisor = /\b(?:escribe(?:me|nos)?|escriba(?:me|nos)?|escribir)\s+(?:(?:aqui|en este chat)\s+)?(?:(?:la\s+)?palabra\s+)?["'“”‘’«»]*asesor\b/iu.test(normalizedBody);
   const notice = options.includeAdvisorNotice !== false && !alreadyOffersAdvisor ? ADVISOR_NOTICE : "";

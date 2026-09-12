@@ -19,6 +19,18 @@ function setup() {
 }
 
 describe("runtime consumes published behavior and approved context", () => {
+  it.each([
+    ["Tiene garantia sus productos?", "No tengo confirmada la garantía de ese producto. Un asesor puede ayudarte con ese dato."],
+    ["quiero hacer un pedido el envio tiene costo?", "No tengo una tarifa de envío confirmada. Un asesor puede indicarte el costo."],
+  ])("answers missing commercial evidence contextually without asking the model: %s", async (query, content) => {
+    const f = setup();
+    f.retrieve.mockResolvedValueOnce({ context: "Se realizan envíos a toda Bolivia.", sources: [{
+      id: "synthetic-shipping", kind: "knowledge", label: "Envíos", content: "Se realizan envíos a toda Bolivia.", score: 1,
+    }] });
+    expect(await f.respond([message(query)])).toEqual({ content, needsAdvisorConfirmation: true });
+    expect(f.complete).not.toHaveBeenCalled();
+  });
+
   it("retains the published branch and map when a mixed model answer omits them", async () => {
     const f = setup();
     const block = "📍 Sucursal Central - Ciudad Prueba\nhttps://bit.ly/synthetic-approved-map\nDirección: Avenida de Prueba.";

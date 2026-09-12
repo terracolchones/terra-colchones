@@ -1,5 +1,5 @@
 import type { CatalogLeadContext, Message } from "@/lib/db";
-import { ADVISOR_CONFIRMATION_REPLY, isHumanHandoffReply } from "@/lib/handoff";
+import { ADVISOR_CONFIRMATION_REPLY, contextualAdvisorConfirmationReply, isHumanHandoffReply } from "@/lib/handoff";
 import { requiresHumanHandoffForQuery } from "@/lib/rag/policy";
 import type { RagContext } from "@/lib/rag/service";
 import { composeInstructions, type ReplyContext } from "./instructions";
@@ -27,8 +27,9 @@ export function createAssistantResponder(deps: ResponderDependencies) {
     let rag: RagContext = { context: "", sources: [] };
     try { rag = await deps.retrieve(safeHistory, selectedLead); }
     catch { deps.onRetrievalFailure?.(); }
+    const query = [...safeHistory].reverse().find((message) => message.role === "user")?.content;
     const advisorFallback = (): AssistantReply => ({
-      content: appendMissingBranchBlocks(ADVISOR_CONFIRMATION_REPLY, rag.requiredBranchBlocks),
+      content: appendMissingBranchBlocks(contextualAdvisorConfirmationReply(query), rag.requiredBranchBlocks),
       // The factual map block should survive the handler's generic-advisor substitution.
       // This flag controls copy only; explicit HUMAN routing still belongs to the handler.
       needsAdvisorConfirmation: !rag.requiredBranchBlocks?.length,
@@ -38,7 +39,6 @@ export function createAssistantResponder(deps: ResponderDependencies) {
       if (!content || containsInternalPlaceholder(content)) return { content: ADVISOR_CONFIRMATION_REPLY, needsAdvisorConfirmation: true };
       return { content, needsAdvisorConfirmation: false };
     }
-    const query = [...safeHistory].reverse().find((message) => message.role === "user")?.content;
     if (query && requiresHumanHandoffForQuery(query, rag.sources)) {
       return advisorFallback();
     }

@@ -138,7 +138,7 @@ describe("warm presentation and contextual catalog copy", () => {
     await processWebhookPayload(initial);
     await processWebhookPayload(initial);
     expect(fixture.meta.sendTextMessage).toHaveBeenCalledExactlyOnceWith(fixture.phone,
-      '¡Hola! 👋 Bienvenido a Terra. Soy el asistente virtual de la tienda.\n\nExplora nuestro catálogo y elige el producto que buscas.\n\nSi quieres hablar con un asesor, escribe "asesor".');
+      '¡Hola! 👋 Bienvenido a Terra. Soy el asistente virtual.\n\nTe comparto el catálogo.\n\nSi quieres hablar con un asesor, escribe "asesor".');
     expect(fixture.meta.sendCatalogCtaMessage).toHaveBeenCalledTimes(1);
 
     await processWebhookPayload(payload("Quisiera más información sobre productos", "synthetic-products"));
@@ -165,7 +165,7 @@ describe("warm presentation and contextual catalog copy", () => {
     fixture.generateAssistantReply.mockResolvedValueOnce({ content: "👋 Hola. Tenemos una sucursal de prueba aquí: https://maps.example.invalid/central", needsAdvisorConfirmation: false });
     await processWebhookPayload(payload("Hola, ¿dónde están?"));
     expect(fixture.meta.sendTextMessage).toHaveBeenCalledExactlyOnceWith(fixture.phone,
-      '¡Hola! 👋 Bienvenido a Terra. Soy el asistente virtual de la tienda.\n\nTenemos una sucursal de prueba aquí: https://maps.example.invalid/central\n\nSi quieres hablar con un asesor, escribe "asesor".');
+      '¡Hola! 👋 Bienvenido a Terra. Soy el asistente virtual.\n\nTenemos una sucursal de prueba aquí: https://maps.example.invalid/central\n\nSi quieres hablar con un asesor, escribe "asesor".');
     expect(fixture.meta.sendCatalogCtaMessage).not.toHaveBeenCalled();
     expect(fixture.generateAssistantReply).toHaveBeenCalledTimes(1);
     expectNoCheckoutAction();
@@ -261,7 +261,7 @@ describe("explicit advisor access without false handoffs", () => {
 
     expect(fixture.db.setMode).toHaveBeenCalledExactlyOnceWith(1, "HUMAN");
     expect(fixture.meta.sendTextMessage).toHaveBeenCalledExactlyOnceWith(
-      fixture.phone, "¡Hola! 👋 Bienvenido a Terra. Soy el asistente virtual de la tienda.\n\nPerfecto, te conecto con un asesor comercial para ayudarte a avanzar.",
+      fixture.phone, "¡Hola! 👋 Bienvenido a Terra. Soy el asistente virtual.\n\nPerfecto, te conecto con un asesor comercial para ayudarte a avanzar.",
     );
     expect(fixture.meta.sendCatalogCtaMessage).not.toHaveBeenCalled();
     expect(fixture.generateAssistantReply).not.toHaveBeenCalled();
@@ -368,7 +368,7 @@ describe("a confirmed order supplies context without forcing every message into 
 
     expect(fixture.generateAssistantReply).toHaveBeenCalledTimes(1);
     // Equality ensures no unconditional GPS/payment reminder is appended after generation.
-    expect(fixture.meta.sendTextMessage).toHaveBeenCalledExactlyOnceWith(fixture.phone, "¡Hola! 👋 Bienvenido a Terra. Soy el asistente virtual de la tienda.\n\nRespuesta aprobada de prueba.\n\nSi quieres hablar con un asesor, escribe \"asesor\".");
+    expect(fixture.meta.sendTextMessage).toHaveBeenCalledExactlyOnceWith(fixture.phone, "¡Hola! 👋 Bienvenido a Terra. Soy el asistente virtual.\n\nRespuesta aprobada de prueba.\n\nSi quieres hablar con un asesor, escribe \"asesor\".");
     expect(fixture.meta.sendCatalogCtaMessage).not.toHaveBeenCalled();
     expect(fixture.db.setMode).not.toHaveBeenCalled();
     expect(activeOrder).toEqual(before);
@@ -394,7 +394,7 @@ describe("a confirmed order supplies context without forcing every message into 
     await processWebhookPayload(payload("Está caro"));
 
     expect(fixture.generateAssistantReply).toHaveBeenCalledTimes(1);
-    expect(fixture.meta.sendTextMessage).toHaveBeenCalledExactlyOnceWith(fixture.phone, "¡Hola! 👋 Bienvenido a Terra. Soy el asistente virtual de la tienda.\n\nEntiendo. ¿Qué presupuesto tienes pensado?\n\nSi quieres hablar con un asesor, escribe \"asesor\".");
+    expect(fixture.meta.sendTextMessage).toHaveBeenCalledExactlyOnceWith(fixture.phone, "¡Hola! 👋 Bienvenido a Terra. Soy el asistente virtual.\n\nEntiendo. ¿Qué presupuesto tienes pensado?\n\nSi quieres hablar con un asesor, escribe \"asesor\".");
     expectNoCheckoutAction();
   });
 
@@ -416,7 +416,7 @@ describe("a confirmed order supplies context without forcing every message into 
     await processWebhookPayload(payload("No me llegó la factura"));
 
     expect(fixture.generateAssistantReply).toHaveBeenCalledTimes(1);
-    expect(fixture.meta.sendTextMessage).toHaveBeenCalledExactlyOnceWith(fixture.phone, "¡Hola! 👋 Bienvenido a Terra. Soy el asistente virtual de la tienda.\n\nRespuesta aprobada de prueba.\n\nSi quieres hablar con un asesor, escribe \"asesor\".");
+    expect(fixture.meta.sendTextMessage).toHaveBeenCalledExactlyOnceWith(fixture.phone, "¡Hola! 👋 Bienvenido a Terra. Soy el asistente virtual.\n\nRespuesta aprobada de prueba.\n\nSi quieres hablar con un asesor, escribe \"asesor\".");
     expectNoCheckoutAction();
   });
 
@@ -499,7 +499,7 @@ describe("a confirmed order supplies context without forcing every message into 
     await processWebhookPayload(payload("¿Cuál es su dirección?"));
 
     expect(fixture.generateAssistantReply).toHaveBeenCalledTimes(1);
-    expect(fixture.meta.sendTextMessage).toHaveBeenCalledExactlyOnceWith(fixture.phone, "¡Hola! 👋 Bienvenido a Terra. Soy el asistente virtual de la tienda.\n\nRespuesta aprobada de prueba.\n\nSi quieres hablar con un asesor, escribe \"asesor\".");
+    expect(fixture.meta.sendTextMessage).toHaveBeenCalledExactlyOnceWith(fixture.phone, "¡Hola! 👋 Bienvenido a Terra. Soy el asistente virtual.\n\nRespuesta aprobada de prueba.\n\nSi quieres hablar con un asesor, escribe \"asesor\".");
     expect(fixture.meta.sendCatalogCtaMessage).not.toHaveBeenCalled();
     expectNoCheckoutAction();
   });
@@ -520,7 +520,7 @@ describe("a confirmed order supplies context without forcing every message into 
     await processWebhookPayload(event);
 
     expect(fixture.generateAssistantReply).toHaveBeenCalledTimes(1);
-    expect(fixture.meta.sendTextMessage).toHaveBeenCalledExactlyOnceWith(fixture.phone, "¡Hola! 👋 Bienvenido a Terra. Soy el asistente virtual de la tienda.\n\nRespuesta aprobada de prueba.\n\nSi quieres hablar con un asesor, escribe \"asesor\".");
+    expect(fixture.meta.sendTextMessage).toHaveBeenCalledExactlyOnceWith(fixture.phone, "¡Hola! 👋 Bienvenido a Terra. Soy el asistente virtual.\n\nRespuesta aprobada de prueba.\n\nSi quieres hablar con un asesor, escribe \"asesor\".");
     expect(fixture.meta.sendCatalogCtaMessage).not.toHaveBeenCalled();
     expect(fixture.db.setMode).not.toHaveBeenCalled();
     expect(activeOrder).toEqual(before);
@@ -572,7 +572,7 @@ describe("intent edge cases preserve consent and access to knowledge", () => {
         expect.objectContaining({ role: "user", content }),
       ]));
       expect(fixture.meta.sendTextMessage).toHaveBeenCalledExactlyOnceWith(
-        fixture.phone, "¡Hola! 👋 Bienvenido a Terra. Soy el asistente virtual de la tienda.\n\nClaro, tómate tu tiempo. Aquí estoy si te surge alguna duda.\n\nSi quieres hablar con un asesor, escribe \"asesor\".",
+        fixture.phone, "¡Hola! 👋 Bienvenido a Terra. Soy el asistente virtual.\n\nClaro, tómate tu tiempo. Aquí estoy si te surge alguna duda.\n\nSi quieres hablar con un asesor, escribe \"asesor\".",
       );
       expect(fixture.meta.sendCatalogCtaMessage).not.toHaveBeenCalled();
       expectNoCheckoutAction();
@@ -593,7 +593,7 @@ describe("intent edge cases preserve consent and access to knowledge", () => {
     await processWebhookPayload(payload("No recibí el QR, quiero hablar con un asesor"));
     expect(fixture.db.setMode).toHaveBeenCalledExactlyOnceWith(1, "HUMAN");
     expect(fixture.meta.sendTextMessage).toHaveBeenCalledExactlyOnceWith(
-      fixture.phone, "¡Hola! 👋 Bienvenido a Terra. Soy el asistente virtual de la tienda.\n\nPerfecto, te conecto con un asesor comercial para ayudarte a avanzar.",
+      fixture.phone, "¡Hola! 👋 Bienvenido a Terra. Soy el asistente virtual.\n\nPerfecto, te conecto con un asesor comercial para ayudarte a avanzar.",
     );
     expect(fixture.generateAssistantReply).not.toHaveBeenCalled();
     expectNoCheckoutAction();
@@ -605,7 +605,7 @@ describe("intent edge cases preserve consent and access to knowledge", () => {
     });
     await processWebhookPayload(payload("Necesito algo más económico"));
     expect(fixture.generateAssistantReply).toHaveBeenCalledTimes(1);
-    expect(fixture.meta.sendTextMessage).toHaveBeenCalledExactlyOnceWith(fixture.phone, "¡Hola! 👋 Bienvenido a Terra. Soy el asistente virtual de la tienda.\n\nClaro. ¿Qué presupuesto tienes pensado?\n\nSi quieres hablar con un asesor, escribe \"asesor\".");
+    expect(fixture.meta.sendTextMessage).toHaveBeenCalledExactlyOnceWith(fixture.phone, "¡Hola! 👋 Bienvenido a Terra. Soy el asistente virtual.\n\nClaro. ¿Qué presupuesto tienes pensado?\n\nSi quieres hablar con un asesor, escribe \"asesor\".");
     expect(fixture.meta.sendCatalogCtaMessage).not.toHaveBeenCalled();
     expectNoCheckoutAction();
   });
@@ -626,7 +626,50 @@ describe("intent edge cases preserve consent and access to knowledge", () => {
     expect(retrieve).toHaveBeenCalledTimes(1);
     expect(complete).toHaveBeenCalledTimes(1);
     expect(complete.mock.calls[0][0].instructions).toContain(approved);
-    expect(fixture.meta.sendTextMessage).toHaveBeenCalledExactlyOnceWith(fixture.phone, "¡Hola! 👋 Bienvenido a Terra. Soy el asistente virtual de la tienda.\n\nSí, aceptamos tarjeta de débito.\n\nSi quieres hablar con un asesor, escribe \"asesor\".");
+    expect(fixture.meta.sendTextMessage).toHaveBeenCalledExactlyOnceWith(fixture.phone, "¡Hola! 👋 Bienvenido a Terra. Soy el asistente virtual.\n\nSí, aceptamos tarjeta de débito.\n\nSi quieres hablar con un asesor, escribe \"asesor\".");
+    expect(fixture.db.setMode).not.toHaveBeenCalled();
+    expectNoCheckoutAction();
+  });
+
+  it.each([
+    [null, "Tiene garantia sus productos?", "No tengo confirmada la garantía de ese producto. Un asesor puede ayudarte con ese dato."],
+    ["awaiting_payment", "Tiene garantia sus productos?", "No tengo confirmada la garantía de ese producto. Un asesor puede ayudarte con ese dato."],
+    [null, "quiero hacer un pedido el envio tiene costo?", "No tengo una tarifa de envío confirmada. Un asesor puede indicarte el costo."],
+    ["awaiting_payment", "quiero hacer un pedido el envio tiene costo?", "No tengo una tarifa de envío confirmada. Un asesor puede indicarte el costo."],
+  ])("keeps missing-evidence replies brief and contextual with state %s: %s", async (status, query, expected) => {
+    fixture.messages.push({ id: 1, role: "assistant", content: "¿En qué puedo ayudarte?", wa_message_id: "synthetic-prior", created_at: Math.floor(Date.now() / 1000) });
+    if (status) fixture.db.getLatestActiveCatalogOrderForConversation.mockReturnValue(order(status));
+    const complete = vi.fn();
+    fixture.generateAssistantReply.mockImplementation(createAssistantResponder({
+      getActiveBehavior: () => ({ id: 1, instructions: "Responde con información aprobada.", createdAt: "synthetic" }),
+      retrieve: async () => ({ context: "Se realizan envíos a toda Bolivia.", sources: [{
+        id: "synthetic-shipping", kind: "knowledge", label: "Envíos", content: "Se realizan envíos a toda Bolivia.", score: 1,
+      }] }),
+      complete,
+    }));
+    await processWebhookPayload(payload(query));
+    expect(fixture.meta.sendTextMessage).toHaveBeenCalledExactlyOnceWith(fixture.phone, expected);
+    expect(complete).not.toHaveBeenCalled();
+    expect(fixture.db.setMode).not.toHaveBeenCalled();
+    expect(fixture.meta.sendCatalogCtaMessage).not.toHaveBeenCalled();
+    expectNoCheckoutAction();
+  });
+
+  it("reconstructs missing-evidence copy rather than trusting a model's transfer promise", async () => {
+    fixture.messages.push({ id: 1, role: "assistant", content: "¿En qué puedo ayudarte?", wa_message_id: "synthetic-prior", created_at: Math.floor(Date.now() / 1000) });
+    fixture.generateAssistantReply.mockResolvedValueOnce({ content: "Te conecto con un asesor comercial y guardo tu solicitud.", needsAdvisorConfirmation: true });
+    await processWebhookPayload(payload("Tiene garantia sus productos?"));
+    expect(sentText()).toBe("No tengo confirmada la garantía de ese producto. Un asesor puede ayudarte con ese dato.");
+    expect(fixture.db.setMode).not.toHaveBeenCalled();
+    expectNoCheckoutAction();
+  });
+
+  it("retains the guarded fallback for model output that asks for private checkout data", async () => {
+    fixture.messages.push({ id: 1, role: "assistant", content: "¿En qué puedo ayudarte?", wa_message_id: "synthetic-prior", created_at: Math.floor(Date.now() / 1000) });
+    fixture.generateAssistantReply.mockResolvedValueOnce({ content: "Comparte tu ubicación para saber el costo.", needsAdvisorConfirmation: false });
+    await processWebhookPayload(payload("el envio tiene costo?"));
+    expect(sentText()).toContain("un asesor debe confirmarlo");
+    expect(sentText()).not.toContain("Comparte tu ubicación");
     expect(fixture.db.setMode).not.toHaveBeenCalled();
     expectNoCheckoutAction();
   });

@@ -9,7 +9,7 @@ const assistant = (created_at?: number) => ({ role: "assistant", content: body, 
 describe("greetings at the start or resumption of a conversation", () => {
   it("greets the first reply and preserves the complete branch link", () => {
     expect(withConversationGreeting(body, [user(100)])).toBe(
-      "¡Hola! 👋 Bienvenido a Terra. Soy el asistente virtual de la tienda.\n\n" + body + "\n\n" + ADVISOR_NOTICE,
+      "¡Hola! 👋 Bienvenido a Terra. Soy el asistente virtual.\n\n" + body + "\n\n" + ADVISOR_NOTICE,
     );
   });
   it("does not repeat greetings during ongoing exchanges", () => {
@@ -43,7 +43,7 @@ describe("greetings at the start or resumption of a conversation", () => {
   it("introduces Terra once even when the model supplied a generic greeting", () => {
     for (const greeting of ["¡Hola! 👋", "Hola de nuevo 😊", "👋 Hola", "Buenos días"]) {
       expect(withConversationGreeting(greeting + "\n" + body, [user(100)])).toBe(
-        "¡Hola! 👋 Bienvenido a Terra. Soy el asistente virtual de la tienda.\n\n" + body + "\n\n" + ADVISOR_NOTICE,
+        "¡Hola! 👋 Bienvenido a Terra. Soy el asistente virtual.\n\n" + body + "\n\n" + ADVISOR_NOTICE,
       );
     }
   });
@@ -62,7 +62,7 @@ describe("greetings at the start or resumption of a conversation", () => {
     'Escríbeme asesor si necesitas ayuda del equipo.',
   ])("keeps a single equivalent advisor invitation: %s", (notice) => {
     const reply = withConversationGreeting(body + "\n\n" + notice, [user(100)]);
-    expect(reply).toBe("¡Hola! 👋 Bienvenido a Terra. Soy el asistente virtual de la tienda.\n\n" + body + "\n\n" + notice);
+    expect(reply).toBe("¡Hola! 👋 Bienvenido a Terra. Soy el asistente virtual.\n\n" + body + "\n\n" + notice);
     expect(reply).not.toContain(ADVISOR_NOTICE);
   });
   it("still supplies explicit advisor access when the reply only mentions an advisor", () => {
@@ -70,13 +70,13 @@ describe("greetings at the start or resumption of a conversation", () => {
     expect(reply).toContain(ADVISOR_NOTICE);
   });
   it("keeps a complete model introduction from duplicating the Terra welcome", () => {
-    const reply = withConversationGreeting("¡Hola! 👋 Bienvenido a Terra. Soy el asistente virtual de la tienda. ¿Qué medida buscas?", [user(100)]);
-    expect(reply).toBe("¡Hola! 👋 Bienvenido a Terra.\n\nSoy el asistente virtual de la tienda. ¿Qué medida buscas?\n\n" + ADVISOR_NOTICE);
+    const reply = withConversationGreeting("¡Hola! 👋 Bienvenido a Terra. Soy el asistente virtual. ¿Qué medida buscas?", [user(100)]);
+    expect(reply).toBe("¡Hola! 👋 Bienvenido a Terra.\n\nSoy el asistente virtual. ¿Qué medida buscas?\n\n" + ADVISOR_NOTICE);
     expect(reply.match(/Bienvenido a Terra/g)).toHaveLength(1);
   });
   it("keeps a completed handoff free from instructions to request it again", () => {
     const reply = withConversationGreeting("Perfecto, te conecto con un asesor.", [user(100)], { includeAdvisorNotice: false });
-    expect(reply).toBe("¡Hola! 👋 Bienvenido a Terra. Soy el asistente virtual de la tienda.\n\nPerfecto, te conecto con un asesor.");
+    expect(reply).toBe("¡Hola! 👋 Bienvenido a Terra. Soy el asistente virtual.\n\nPerfecto, te conecto con un asesor.");
     expect(reply).not.toContain('escribe "asesor"');
   });
   it("keeps the customer's question answered instead of replacing it with an open-ended welcome", () => {
