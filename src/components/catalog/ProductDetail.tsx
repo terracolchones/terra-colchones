@@ -16,6 +16,10 @@ import type {
   CatalogVariant,
 } from "@/lib/catalog-storefront/types";
 import { buildOrderConfirmationWhatsAppUrl } from "@/lib/catalog-storefront/whatsapp";
+import {
+  purchaseAvailability,
+  purchaseUnavailableMessage,
+} from "@/lib/catalog-storefront/purchase";
 
 interface ProductDetailProps {
   product: CatalogProduct;
@@ -91,8 +95,8 @@ export function ProductDetail({
   const price = selectedVariant?.price ?? product.priceFrom;
   const compareAtPrice =
     selectedVariant?.compareAtPrice ?? product.compareAtPriceFrom;
-  const currentAvailability =
-    selectedVariant?.availability ?? product.availability;
+  const currentAvailability = purchaseAvailability(product, selectedVariant);
+  const unavailableMessage = purchaseUnavailableMessage(currentAvailability);
   const galleryImages = selectedVariant?.images.length
     ? selectedVariant.images
     : product.images;
@@ -157,7 +161,7 @@ export function ProductDetail({
   }
 
   async function confirmOrder(): Promise<void> {
-    if (confirmingOrder || !whatsAppPhone) return;
+    if (confirmingOrder || !whatsAppPhone || unavailableMessage) return;
     setConfirmingOrder(true);
     setOrderError(null);
     try {
@@ -217,7 +221,7 @@ export function ProductDetail({
         <button
           type="button"
           onClick={() => void confirmOrder()}
-          disabled={confirmingOrder}
+          disabled={confirmingOrder || Boolean(unavailableMessage)}
           className={`inline-flex min-h-11 shrink-0 items-center justify-center rounded-xl bg-[#148a4a] px-4 text-sm font-bold text-white shadow-lg shadow-[#148a4a]/20 transition hover:bg-[#0f743d] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#148a4a] disabled:cursor-wait disabled:opacity-60 sm:min-h-12 sm:px-5 ${widthClass}`}
         >
           {confirmingOrder ? "Abriendo WhatsApp…" : "Confirmar pedido"}
@@ -227,11 +231,13 @@ export function ProductDetail({
     return (
       <button
         type="button"
+        disabled={Boolean(unavailableMessage)}
+        title={unavailableMessage ?? undefined}
         onClick={() => {
           setOrderReadyToConfirm(true);
           setOrderError(null);
         }}
-        className={`inline-flex min-h-11 shrink-0 items-center justify-center rounded-xl bg-red-600 px-4 text-sm font-bold text-white shadow-lg shadow-red-600/20 transition hover:bg-red-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-600 sm:min-h-12 sm:px-5 ${widthClass}`}
+        className={`inline-flex min-h-11 shrink-0 items-center justify-center rounded-xl bg-red-600 px-4 text-sm font-bold text-white shadow-lg shadow-red-600/20 transition hover:bg-red-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-600 disabled:cursor-not-allowed disabled:opacity-60 sm:min-h-12 sm:px-5 ${widthClass}`}
       >
         Comprar
       </button>
@@ -449,6 +455,11 @@ export function ProductDetail({
                 {selectedName}
               </p>
               <div className="mt-4">{renderOrderAction("w-full lg:w-64")}</div>
+              {unavailableMessage && (
+                <p role="status" className="mt-3 text-xs text-stone-600">
+                  {unavailableMessage}
+                </p>
+              )}
               {orderError && (
                 <p
                   role="alert"
@@ -519,6 +530,11 @@ export function ProductDetail({
           </div>
           {renderOrderAction()}
         </div>
+        {unavailableMessage && (
+          <p role="status" className="mx-auto mt-1 max-w-3xl text-xs text-stone-600">
+            {unavailableMessage}
+          </p>
+        )}
         {orderError && (
           <p
             role="alert"

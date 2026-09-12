@@ -1,5 +1,9 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { getPublishedProductBySlug } from "@/lib/catalog-storefront/server";
+import {
+  purchaseAvailability,
+  purchaseUnavailableMessage,
+} from "@/lib/catalog-storefront/purchase";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -32,6 +36,9 @@ export async function POST(request: NextRequest) {
   } catch {
     return NextResponse.json({ error: "Solicitud inválida" }, { status: 400 });
   }
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    return NextResponse.json({ error: "Solicitud inválida" }, { status: 400 });
+  }
 
   const slug =
     typeof payload.productSlug === "string" ? payload.productSlug.trim() : "";
@@ -46,7 +53,7 @@ export async function POST(request: NextRequest) {
   }
 
   const product = await getPublishedProductBySlug(slug);
-  if (!product || product.availability !== "available") {
+  if (!product) {
     return NextResponse.json(
       { error: "Este producto ya no está disponible" },
       { status: 409 },
@@ -61,9 +68,18 @@ export async function POST(request: NextRequest) {
       { error: "La opción seleccionada ya no está disponible" },
       { status: 409 },
     );
-  if (variant && variant.availability !== "available") {
+  if (!variantId && product.variants.some((item) => item.active)) {
     return NextResponse.json(
-      { error: "La opción seleccionada ya no está disponible" },
+      { error: "Elige una opción del producto" },
+      { status: 400 },
+    );
+  }
+  const unavailableMessage = purchaseUnavailableMessage(
+    purchaseAvailability(product, variant),
+  );
+  if (unavailableMessage) {
+    return NextResponse.json(
+      { error: unavailableMessage },
       { status: 409 },
     );
   }
@@ -104,6 +120,7 @@ export async function POST(request: NextRequest) {
         checkoutToken: validCheckoutToken(payload.checkoutToken),
       }),
       cache: "no-store",
+      signal: AbortSignal.timeout(15_000),
     });
     const body = (await response.json().catch(() => null)) as {
       orderCode?: unknown;
@@ -116,7 +133,7 @@ export async function POST(request: NextRequest) {
           : "No pudimos crear el pedido. Inténtalo nuevamente.";
       return NextResponse.json(
         { error },
-        { status: response.status >= 500 ? 502 : response.status },
+        { status: response.ok || response.status >= 500 ? 502 : response.status },
       );
     }
     return NextResponse.json({ orderCode: body.orderCode }, { status: 201 });

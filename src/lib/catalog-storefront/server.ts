@@ -6,8 +6,6 @@ import {
   DEVELOPMENT_CATALOG_PREVIEW,
 } from "@/lib/catalog-storefront/demo";
 import { normalizeColorHex } from "@/lib/catalog-storefront/color-variants";
-import { normalizeWhatsAppPhone } from "@/lib/catalog-storefront/whatsapp";
-import { getPhoneNumberInfo } from "@/lib/meta/client";
 import type {
   CatalogHomeSettings,
   CatalogImage,
@@ -23,9 +21,6 @@ const VALID_AVAILABILITY = new Set<ProductAvailability>([
   "out_of_stock",
   "coming_soon",
 ]);
-// Último recurso para no desactivar la compra si Graph o las variables de Meta
-// no están disponibles durante el renderizado del catálogo.
-const DEFAULT_CATALOG_WHATSAPP_PHONE = "59178600064";
 
 let client: SupabaseClient | undefined;
 
@@ -59,45 +54,7 @@ export function isCatalogConfigured(): boolean {
   return Boolean(url && secret);
 }
 
-/**
- * El catálogo debe abrir el mismo número que usa la Cloud API. La variable
- * privada solo sirve de respaldo cuando Graph no puede consultarse (por
- * ejemplo, si el catálogo se despliega sin las credenciales de Meta).
- */
-function configuredCatalogWhatsAppPhone(): string | null {
-  return (
-    normalizeWhatsAppPhone(process.env.TERRA_WHATSAPP_PHONE) ??
-    normalizeWhatsAppPhone(process.env.NEXT_PUBLIC_TERRA_WHATSAPP_PHONE) ??
-    DEFAULT_CATALOG_WHATSAPP_PHONE
-  );
-}
-
-export async function getCatalogWhatsAppPhone(): Promise<string | null> {
-  const fallback = configuredCatalogWhatsAppPhone();
-
-  try {
-    const phone = normalizeWhatsAppPhone(
-      (await getPhoneNumberInfo()).display_phone_number,
-    );
-    if (!phone) {
-      console.warn(
-        "[catalog] Meta no devolvió un número de WhatsApp válido; se usa el respaldo configurado.",
-      );
-      return fallback;
-    }
-    if (fallback && fallback !== phone) {
-      console.warn(
-        "[catalog] El número configurado no coincide con el número activo de Meta; se usa el de Meta.",
-      );
-    }
-    return phone;
-  } catch {
-    console.warn(
-      "[catalog] No se pudo consultar el número activo de Meta; se usa el respaldo configurado.",
-    );
-    return fallback;
-  }
-}
+export { getCatalogWhatsAppPhone } from "./contact";
 
 export function getCatalogServerClient(): SupabaseClient {
   if (client) return client;

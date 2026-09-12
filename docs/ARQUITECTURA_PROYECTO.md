@@ -77,6 +77,45 @@ internos, teléfonos ni acceso a SQLite.
 
 ## Operación y recuperación
 
+### Corrección del destino comercial y disponibilidad — 12 de septiembre de 2026
+
+- Servicio comprobado en EasyPanel: `terra-catalogo / catalogo`, repositorio
+  `terracolchones/terra-colchones`, rama `main`, Nixpacks. Base remota comprobada:
+  `643856d80b3d2e5e5efa78695e5022de6ee3d139`.
+- Respaldo: `codex/safety-before-catalog-checkout-20260912` sobre esa base.
+  Implementación aislada: `codex/catalog-checkout-official-20260912`, worktree
+  `E:\Terra App\catalog-checkout-20260912`.
+- El número comercial se comprobó mediante una consulta de solo lectura a Meta
+  desde `agentevps / agente`: respuesta 200, nombre Terra y calidad GREEN.
+  No se consultaron conversaciones ni la base SQLite.
+- El catálogo tenía configurado un número de prueba. Se sustituyó únicamente
+  `TERRA_WHATSAPP_PHONE` por el número comercial verificado y EasyPanel confirmó
+  `Env updated`. Los números y credenciales no se copian a esta documentación.
+- **Pendiente de autorización explícita para desplegar**: el guardado de variables
+  no actualiza el contenedor en ejecución. La revisión automática rechazó el
+  intento de Deploy porque exige la solicitud expresa de despliegue establecida
+  en `AGENTS.md`. No publicar por Git como alternativa a ese bloqueo.
+- El código del catálogo toma el destino de `TERRA_WHATSAPP_PHONE` (o de la
+  variable pública anterior por compatibilidad); ya no consulta Meta desde el
+  catálogo ni utiliza un número fijo de respaldo. La configuración inválida
+  desactiva la compra en vez de enviarla a otro canal.
+- La disponibilidad de la versión seleccionada se utiliza tanto en la interfaz
+  como al validar el pedido. La disponibilidad de familia solo se usa si no hay
+  versión. No se puede omitir una variante activa para saltar su validación.
+- Se conservan Comprar rojo y Confirmar pedido verde. Las opciones Próximamente
+  o agotadas explican su estado y desactivan Comprar antes de intentar el pedido.
+  No se ha alterado stock en Supabase.
+- En la web pública se observaron un producto con nombre de prueba y descripción
+  Lorem Ipsum en Prince 3P. Son contenido de catálogo pendiente de revisión
+  comercial; no se inventaron descripciones ni existencias.
+- Validación: 30 pruebas en 7 archivos, ESLint, TypeScript y build de Next.js
+  16.3.4 aprobados. La compilación final usa dependencias locales independientes;
+  Turbopack no aceptaba el enlace inicial de dependencias entre worktrees.
+  Se probó el flujo rojo/verde y el reinicio al cambiar de variante en navegador,
+  además del aviso y botón desactivado para Próximamente a 390 × 844. Solo se
+  utilizaron datos de demostración locales y mocks para crear pedidos; no se
+  enviaron mensajes ni se generaron pedidos reales durante la verificación.
+
 Antes del siguiente desarrollo se crearon estos puntos Git locales:
 
 | Área     | Punto de restauración                                     | Commit protegido                           |
