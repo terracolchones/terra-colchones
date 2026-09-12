@@ -43,7 +43,26 @@ Evaluación técnica sin proveedor: 14 escenarios / 25 turnos, cero controles fa
 Esta evaluación no califica la personalidad de un modelo real.
 Revisión independiente cerró dos regresiones adicionales: fuente fresca indisponible con
 seguimiento corto y mapas cruzados por el modelo, incluso con líneas vacías entre título y URL.
-La verificación de producción se registra al terminar la liberación.
+Producción verificada el 12 de septiembre de 2026, 22:25 UTC:
+
+- Commit desplegado: `0a1d395179998ba8237ed3f9a586f0b3b40d6e73`.
+- EasyPanel terminó correctamente; los hashes de diez módulos desplegados coinciden con Git.
+- Siete consultas ejecutadas con los módulos desplegados y el conocimiento publicado:
+  dirección de Cochabamba, Cocha, repetición de Cocha, datos de Cochabamba,
+  todas las direcciones, sucursal Sur y direcciones de Santa Cruz. Todas aprobaron
+  nombre y mapa exactos, cantidad de sucursales y ausencia de marcadores/asteriscos.
+  Cero llamadas al modelo y cero envíos por WhatsApp.
+- `/comportamiento` y `/api/behavior` autenticados: 200. API sin autenticación: 401.
+- Instrucciones activas `built_in`, con la nueva regla de saludo visible en la API.
+- Conexión `connected`, calidad `GREEN`, webhook `reachable` en ese momento.
+- Contactos siguen publicados en revisión 2; SHA256 del contenido:
+  `cdb5ce2a4c689de45202d4a3383af4cef9c5df61885139fd6015100fdfb6cafc`.
+- Evidencia sin datos de clientes: `/app/data/backups/maps-release-0a1d395-probe.json`
+  y `/app/data/backups/maps-release-0a1d395-health.json`.
+
+La primera ejecución de la herramienta de comprobación tuvo un error al escapar una
+cadena y terminó antes de consultar servicios. Se corrigió esa herramienta; las siete
+consultas anteriores corresponden a la ejecución posterior que finalizó correctamente.
 
 Para volver atrás, revertir el commit funcional de esta liberación en una rama separada,
 validar y publicar de forma normal en `agent-production`; no forzar la rama ni restaurar
