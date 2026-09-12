@@ -3,6 +3,7 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { createPublicOrderCode, normalizePublicOrderCode } from "@/lib/order-code";
+import { catalogDeliveryReservationState } from "@/lib/catalog-delivery-reservation-policy";
 
 export type ConversationMode = "AI" | "HUMAN";
 export type MessageRole = "user" | "assistant" | "human";
@@ -388,11 +389,13 @@ export function reserveCatalogLocationRequest(
     const existing = db
       .prepare("SELECT status, updated_at FROM catalog_order_location_deliveries WHERE order_id = ?")
       .get(orderId) as { status: CatalogLocationDeliveryStatus; updated_at: number } | undefined;
-    if (existing?.status === "sent") {
+    const deliveryState = catalogDeliveryReservationState(existing);
+    if (deliveryState === "already_sent") {
       db.prepare("UPDATE catalog_orders SET location_requested = 1, updated_at = unixepoch() WHERE id = ?").run(orderId);
       return { reservation: "already_sent" as const, order: getCatalogOrderById(orderId) };
     }
-    if (existing?.status === "sending" && Date.now() / 1000 - existing.updated_at < 300) {
+    // La edad no prueba un rechazo: un envío indeterminado requiere revisión.
+    if (deliveryState === "in_progress") {
       return { reservation: "in_progress" as const, order };
     }
     if (existing) {
@@ -479,8 +482,10 @@ export function reserveCatalogPaymentQrDelivery(
     const existing = db
       .prepare("SELECT status, updated_at FROM catalog_order_payment_qr_deliveries WHERE order_id = ?")
       .get(orderId) as { status: CatalogPaymentQrDeliveryStatus; updated_at: number } | undefined;
-    if (existing?.status === "sent") return { reservation: "already_sent" as const, order };
-    if (existing?.status === "sending" && Date.now() / 1000 - existing.updated_at < 300) {
+    const deliveryState = catalogDeliveryReservationState(existing);
+    if (deliveryState === "already_sent") return { reservation: "already_sent" as const, order };
+    // No recuperar por tiempo un QR que pudo haber sido aceptado por Meta.
+    if (deliveryState === "in_progress") {
       return { reservation: "in_progress" as const, order };
     }
 

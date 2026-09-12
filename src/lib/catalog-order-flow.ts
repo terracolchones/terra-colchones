@@ -7,21 +7,30 @@ import {
 import { sendLocationRequestMessage } from "@/lib/meta/client";
 
 /** Envía una sola vez la solicitud GPS nativa una vez confirmado el pedido. */
-export async function dispatchCatalogLocationRequest(orderId: string): Promise<"sent" | "already_sent" | "in_progress" | "not_ready" | "failed"> {
+export async function dispatchCatalogLocationRequest(orderId: string): Promise<"sent" | "already_sent" | "in_progress" | "not_ready" | "failed" | "suppressed" | "uncertain" | "accepted_persistence_failed"> {
   const reservation = reserveCatalogLocationRequest(orderId);
   if (reservation.reservation !== "reserved") return reservation.reservation;
   const order = reservation.order;
   if (!order?.conversation_id) return "not_ready";
   const conversation = getConversationById(order.conversation_id);
-  if (!conversation) return "not_ready";
+  if (!conversation || conversation.mode !== "AI") {
+    failCatalogLocationRequest(order.id); // No se intentó enviar a Meta.
+    return conversation ? "suppressed" : "not_ready";
+  }
+
+  let sent: { wa_message_id: string };
+  try {
+    sent = await sendLocationRequestMessage(conversation.phone, order.product_name);
+  } catch {
+    console.error("[order] resultado del envío GPS incierto; requiere revisión antes de reintentar.");
+    return "uncertain";
+  }
 
   try {
-    const sent = await sendLocationRequestMessage(conversation.phone, order.product_name);
     completeCatalogLocationRequest(order.id, sent.wa_message_id);
-    return "sent";
-  } catch (error) {
-    failCatalogLocationRequest(order.id);
-    console.error("[order] no se pudo enviar la solicitud GPS:", error);
-    return "failed";
+  } catch {
+    console.error("[order] GPS aceptado por Meta sin persistencia final; no reenviar automáticamente.");
+    return "accepted_persistence_failed";
   }
+  return "sent";
 }
