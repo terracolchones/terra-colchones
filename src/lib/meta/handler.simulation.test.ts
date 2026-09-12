@@ -162,7 +162,10 @@ describe("offline handler characterization (no real database or provider)", () =
     await processing;
 
     expect(sequence).toEqual(["text-started", "text-accepted", "cta-started"]);
-    expect(fixture.meta.sendTextMessage).toHaveBeenCalledTimes(1);
+    expect(fixture.meta.sendTextMessage).toHaveBeenCalledExactlyOnceWith(
+      fixture.phone,
+      "¡Hola! 👋 Bienvenido a Terra. Explora nuestro catálogo y elige el producto que buscas. Si prefieres atención humana, escribe \"asesor\".",
+    );
     expect(fixture.meta.sendCatalogCtaMessage).toHaveBeenCalledExactlyOnceWith(
       fixture.phone, "https://catalog.invalid/?checkout=synthetic-checkout-token",
     );
@@ -255,6 +258,28 @@ describe("offline handler characterization (no real database or provider)", () =
     expect(fixture.meta.sendTextMessage).toHaveBeenCalledTimes(1);
     expect(fixture.meta.sendCatalogCtaMessage).not.toHaveBeenCalled();
     expect(fixture.generateAssistantReply).not.toHaveBeenCalled();
+  });
+
+  it("the advertised literal asesor switches to HUMAN once, with no RAG, CTA or repeated acknowledgment", async () => {
+    fixture.meta.sendTextMessage.mockImplementationOnce(async () => {
+      expect(fixture.mode).toBe("HUMAN");
+      return { wa_message_id: "synthetic-literal-human-ack" };
+    });
+    const event = payload(textMessage("synthetic-literal-human-request", "asesor"));
+    await processWebhookPayload(event);
+    await processWebhookPayload(event);
+    await processWebhookPayload(payload(textMessage("synthetic-second-human-request", "asesor")));
+
+    expect(fixture.mode).toBe("HUMAN");
+    expect(fixture.db.setMode).toHaveBeenCalledExactlyOnceWith(1, "HUMAN");
+    expect(fixture.meta.sendTextMessage).toHaveBeenCalledExactlyOnceWith(
+      fixture.phone, "Perfecto, te conecto con un asesor comercial para ayudarte a avanzar.",
+    );
+    expect(fixture.meta.sendCatalogCtaMessage).not.toHaveBeenCalled();
+    expect(fixture.generateAssistantReply).not.toHaveBeenCalled();
+    expect(fixture.dispatchCatalogLocationRequest).not.toHaveBeenCalled();
+    expect(fixture.dispatchCatalogPaymentQr).not.toHaveBeenCalled();
+    expect(fixture.messages.filter((message) => message.role === "user")).toHaveLength(2);
   });
 });
 

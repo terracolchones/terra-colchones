@@ -330,7 +330,7 @@ async function handleTextMessage(message: RecordValue, contactName: string | nul
       await sendAndStore(
         conversation,
         phone,
-        "¡Hola! 👋 Bienvenido a Terra. Explora nuestro catálogo y elige el producto que buscas.",
+        "¡Hola! 👋 Bienvenido a Terra. Explora nuestro catálogo y elige el producto que buscas. Si prefieres atención humana, escribe \"asesor\".",
       );
     }
     await sendCatalog(conversation, phone, origin);
