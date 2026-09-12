@@ -11,7 +11,9 @@
     "start": "next start",
     "lint": "eslint .",
     "test": "vitest run",
-    "test:local": "node scripts/run-local-tests.mjs"
+    "test:local": "node scripts/run-local-tests.mjs",
+    "build:local": "node scripts/run-local-build.mjs",
+    "preview:behavior": "node scripts/run-behavior-preview.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.115.0",

@@ -6,3 +6,4 @@ data/
 .env
 npm-debug.log*
 *.tsbuildinfo
+.cache/

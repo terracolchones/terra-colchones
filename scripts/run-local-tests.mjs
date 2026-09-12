@@ -11,6 +11,7 @@ if (readdirSync(root).some((name) => name.startsWith(".env") && name !== ".env.e
 
 // Do not forward provider credentials, proxy settings or inherited NODE_OPTIONS.
 const env = { NODE_ENV: "test", CI: "1", TERRA_LOCAL_SIMULATION: "1", NEXT_TELEMETRY_DISABLED: "1" };
+env.LOCALAPPDATA = fileURLToPath(new URL("../.cache/test-local/", import.meta.url));
 const allowedSystemKeys = /^(path|systemroot|windir|temp|tmp|comspec|pathext|systemdrive)$/i;
 for (const key of Object.keys(process.env)) {
   if (allowedSystemKeys.test(key) && process.env[key] !== undefined) env[key] = process.env[key];
