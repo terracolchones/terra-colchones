@@ -172,20 +172,24 @@ describe("local simulation: signed webhook POST", () => {
   it("handles a later processing rejection without changing the already returned 200", async () => {
     const pending = deferredProcessing();
     const failure = new Error("test-only simulated processing failure");
-    const errorLog = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const errorLog = vi.spyOn(console, "info").mockImplementation(() => undefined);
     handler.processWebhookPayload.mockReturnValueOnce(pending.promise);
 
     try {
       const response = await POST(postRequest(JSON.stringify(PAYLOAD)));
       expect(response.status).toBe(200);
-      expect(errorLog).not.toHaveBeenCalled();
+      expect(errorLog).toHaveBeenCalledTimes(1);
 
       pending.reject(failure);
       // Let the route's catch callback run. Vitest also fails the suite if an
       // unhandled rejection escapes; no global rejection handler hides errors.
       await Promise.resolve();
 
-      expect(errorLog).toHaveBeenCalledExactlyOnceWith("[webhook] error procesando payload:", failure);
+      expect(errorLog).toHaveBeenCalledTimes(2);
+      expect(errorLog.mock.calls.map((call) => JSON.parse(String(call[1])).event)).toEqual([
+        "webhook.accepted", "webhook.processing_failed",
+      ]);
+      expect(JSON.stringify(errorLog.mock.calls)).not.toContain(failure.message);
       expect(response.status).toBe(200);
       expect(handler.processWebhookPayload).toHaveBeenCalledTimes(1);
     } finally {
