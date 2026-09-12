@@ -8,6 +8,14 @@
 
 **Finalidad:** conservar las correcciones mientras se mejora tono, conocimiento y experiencia.
 
+**Lectura operativa actual:** basta la
+[guía mínima de reestructuración](GUIA_MINIMA_REESTRUCTURACION_AGENTE.md) junto con
+el AGENTS.md aplicable. Este documento conserva el detalle histórico para consulta
+puntual; no se exige leerlo completo. La guía define el alcance para nuevos diseños:
+se preservan conductas seguras, no archivos, arquitectura o cantidad de mensajes.
+Una reimplementación dentro de una reestructuración autorizada es válida con
+pruebas equivalentes o mejores; no es una excepción por cambiar la estructura.
+
 > **REGLA OBLIGATORIA PARA DESARROLLADORES E IA:** una solicitud para mejorar el
 > prompt, el tono, el conocimiento o las respuestas NO autoriza a quitar, debilitar
 > o eludir las protecciones descritas en este documento. No reintroducir reenvíos
@@ -446,7 +454,8 @@ trazabilidad equivalente de las invariantes.
 
 - [ ] Identificar servicio, HEAD, rama, worktree y cambios ajenos; no confundir
   una copia antigua o el catálogo con el agente vigente.
-- [ ] Leer este contrato y el AGENTS.md aplicable; distinguir texto de lógica.
+- [ ] Leer la guía mínima y el AGENTS.md aplicable; consultar aquí solo el detalle
+  relevante. Distinguir texto de lógica y conducta protegida de implementación.
 - [ ] Crear un punto recuperable y trabajar en una rama `codex/` no configurada
   directamente para producción.
 - [ ] Revisar el diff contra la versión vigente y preservar D1–D5/C6–C10 y P-01–P-09.
@@ -529,11 +538,11 @@ requiere evaluación explícita, no un rollback ciego.
 
 ## 12. Aplicación del contrato y cierre
 
-Este documento debe acompañar cada tarea sobre el agente. El AGENTS.md de la
-copia corregida lo enlaza; una copia local antigua puede apuntar a esta referencia
-para evitar trabajar inadvertidamente sin las correcciones. En otra máquina o
-nueva rama, incorporar el contrato y su enlace mediante una integración documental
-revisada. No dar por hecho que un archivo solo local ya está en GitHub/producción.
+La guía mínima debe acompañar cada tarea sobre el agente; este documento queda
+disponible para consulta puntual. El AGENTS.md de la copia corregida enlaza la guía.
+En otra máquina o nueva rama, incorporar la guía y su enlace mediante una integración
+documental revisada, conservando esta auditoría como referencia. No dar por hecho
+que un archivo solo local ya está en GitHub/producción.
 
 Para un bloqueo técnico adicional se necesita configurar por separado CI,
 revisiones obligatorias y protección de ramas. Eso no se implementa al escribir

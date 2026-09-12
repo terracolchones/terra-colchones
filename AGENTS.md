@@ -35,14 +35,14 @@ ruta o el panel del catálogo para diagnosticar este agente.
 - Actualizar `E:\Terra App\01\docs\ARQUITECTURA_PROYECTO.md` cuando una
   modificación afecte el contrato entre catálogo y agente.
 
-## Contrato de estabilidad obligatorio
+## Lectura mínima de estabilidad
 
-Antes de modificar el agente, leer completamente
-[docs/CONTRATO_DE_ESTABILIDAD_DEL_AGENTE.md](docs/CONTRATO_DE_ESTABILIDAD_DEL_AGENTE.md).
-Las mejoras de prompt, tono y conocimiento NO autorizan a quitar o debilitar el
-filtro del receptor, HMAC/deduplicación, respeto a HUMANO, tratamiento de envíos
-aceptados/inciertos, reservas GPS/QR o diagnóstico sanitizado. No copiar código
-anterior a las correcciones ni eliminar pruebas para hacer pasar una regresión.
-Un cambio estructural de esas protecciones requiere autorización específica,
-revisión y pruebas equivalentes o mejores. El documento distingue correcciones,
-controles preexistentes y pendientes; no promete inmunidad frente a baneos.
+Antes de modificar el agente, leer
+[docs/GUIA_MINIMA_REESTRUCTURACION_AGENTE.md](docs/GUIA_MINIMA_REESTRUCTURACION_AGENTE.md).
+No es obligatorio leer el contrato extenso ni todas las auditorías: consultar
+solo los apartados relevantes cuando haga falta contexto. Se protegen conductas,
+no archivos ni la arquitectura anterior. Una reestructuración autorizada puede
+reimplementar las protecciones con pruebas equivalentes o mejores; no debilitarlas
+silenciosamente ni eliminar su cobertura. Las mejoras editoriales no autorizan
+cambios de transporte/estado ni operaciones en producción. La guía no garantiza
+inmunidad frente a baneos.
