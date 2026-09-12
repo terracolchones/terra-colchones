@@ -27,6 +27,7 @@ import { saleFlowResume } from "@/lib/rag/resume";
 import { sendCatalogCtaMessage, sendTextMessage } from "@/lib/meta/client";
 import { dispatchCatalogPaymentQr } from "@/lib/catalog-payment-flow";
 import { parseOrderConfirmationCode } from "@/lib/order-code";
+import { diagnostic, messageRef, type MessageKind, type MessageStatus } from "@/lib/meta/diagnostics";
 
 type RecordValue = Record<string, unknown>;
 
@@ -59,16 +60,47 @@ function catalogPublicUrl(origin?: string): string | null {
   return agentBaseUrl ? agentBaseUrl + "/catalogo" : null;
 }
 
-async function sendAndStore(conversation: Conversation, phone: string, content: string): Promise<void> {
+/** Consultar de nuevo tras cada espera: el operador puede haber tomado el chat. */
+function canAutomate(conversation: Conversation): boolean {
+  const allowed = getConversationById(conversation.id)?.mode === "AI";
+  if (!allowed) diagnostic({ event: "message.mode_suppressed" });
+  return allowed;
+}
+
+function reserveIncomingMessage(waMessageId: string, kind: MessageKind): boolean {
+  if (wasMessageProcessed(waMessageId) || !markMessageProcessed(waMessageId)) {
+    diagnostic({ event: "message.duplicate_ignored", kind, message_ref: messageRef(waMessageId) });
+    return false;
+  }
+  diagnostic({ event: "message.received", kind, message_ref: messageRef(waMessageId) });
+  return true;
+}
+
+async function sendAndStore(
+  conversation: Conversation,
+  phone: string,
+  content: string,
+  options: { humanHandoffAcknowledgment?: boolean } = {},
+): Promise<void> {
+  const current = getConversationById(conversation.id);
+  if (!current || (current.mode !== "AI" && !(options.humanHandoffAcknowledgment && current.mode === "HUMAN"))) {
+    diagnostic({ event: "message.mode_suppressed", kind: "text" });
+    return;
+  }
   const id = insertMessage(conversation.id, "assistant", content);
   const { wa_message_id } = await sendTextMessage(phone, content);
-  updateMessageWaId(id, wa_message_id);
+  try {
+    updateMessageWaId(id, wa_message_id);
+  } catch {
+    // Meta ya aceptó el envío. Un fallo local no autoriza otro mensaje.
+    diagnostic({ event: "history.persistence_failed", kind: "text", message_ref: messageRef(wa_message_id) });
+  }
 }
 
 /** Activa atención humana antes de avisar al cliente, para que el dashboard lo muestre de inmediato. */
 async function handoffToHuman(conversation: Conversation, phone: string): Promise<void> {
   setMode(conversation.id, "HUMAN");
-  await sendAndStore(conversation, phone, HUMAN_HANDOFF_REPLY);
+  await sendAndStore(conversation, phone, HUMAN_HANDOFF_REPLY, { humanHandoffAcknowledgment: true });
 }
 
 /** Envía el catálogo con un identificador opaco cuando el chat ya existe. */
@@ -77,6 +109,7 @@ async function sendCatalog(
   phone: string,
   origin?: string,
 ): Promise<void> {
+  if (!canAutomate(conversation)) return;
   const catalogUrl = catalogPublicUrl(origin);
   if (!catalogUrl) {
     await sendAndStore(
@@ -93,23 +126,28 @@ async function sendCatalog(
     const url = new URL(catalogUrl);
     url.searchParams.set("checkout", checkoutToken);
     checkoutUrl = url.toString();
-  } catch (error) {
+  } catch {
     // El catálogo aún puede abrirse de forma directa; el código corto vinculará
     // el pedido cuando el cliente vuelva a escribir por WhatsApp.
-    console.error("[order] no se pudo crear la sesión privada del catálogo:", error);
+    diagnostic({ event: "catalog.session_failed" });
   }
 
+  if (!canAutomate(conversation)) return;
   const localId = insertMessage(conversation.id, "assistant", "Catálogo enviado.");
+  let acceptedMessageId: string;
   try {
     const { wa_message_id } = await sendCatalogCtaMessage(phone, checkoutUrl);
-    updateMessageWaId(localId, wa_message_id);
-  } catch (error) {
-    console.error("[wh] no se pudo enviar el catálogo:", error);
-    await sendAndStore(
-      conversation,
-      phone,
-      "No pudimos abrir el catálogo ahora. Escríbenos qué producto buscas y te ayudamos.",
-    );
+    acceptedMessageId = wa_message_id;
+  } catch {
+    // Un error de transporte no prueba que Meta haya rechazado el mensaje.
+    // Tampoco reenviar alternativas ante restricciones o límites del proveedor.
+    diagnostic({ event: "send.failed", kind: "cta_url" });
+    return;
+  }
+  try {
+    updateMessageWaId(localId, acceptedMessageId);
+  } catch {
+    diagnostic({ event: "history.persistence_failed", kind: "cta_url", message_ref: messageRef(acceptedMessageId) });
   }
 }
 
@@ -119,27 +157,30 @@ async function answerKnowledgeQuestion(
   phone: string,
   activeOrder?: ReturnType<typeof getLatestActiveCatalogOrderForConversation>,
 ): Promise<void> {
+  if (!canAutomate(conversation)) return;
+  let content: string;
   try {
     const startedAt = Date.now();
     const reply = await generateAssistantReply(
       getRecentHistory(conversation.id, 20),
       getCatalogLeadContext(conversation.id),
     );
-    console.log("[wh] LLM en " + (Date.now() - startedAt) + "ms");
-    const content = reply.needsAdvisorConfirmation || containsUnsafeCheckoutReply(reply.content)
+    diagnostic({ event: "rag.completed", elapsed_ms: Date.now() - startedAt });
+    content = reply.needsAdvisorConfirmation || containsUnsafeCheckoutReply(reply.content)
       ? "Para darte ese dato con precisión, un asesor debe confirmarlo. Si prefieres, escribe “quiero hablar con un asesor”."
       : reply.content;
-    const resume = activeOrder ? saleFlowResume(activeOrder) : "";
+  } catch {
+    diagnostic({ event: "rag.failed" });
+    content = "No pudimos consultar esa información ahora. Puedes explorar el catálogo o escribir “quiero hablar con un asesor”.";
+  }
+  const resume = activeOrder ? saleFlowResume(activeOrder) : "";
+  try {
+    // sendAndStore vuelve a comprobar el modo después de la consulta LLM.
     await sendAndStore(conversation, phone, resume ? `${content}\n\n${resume}` : content);
-  } catch (error) {
-    console.error("[wh] error procesando texto:", error);
-    try {
-      const resume = activeOrder ? saleFlowResume(activeOrder) : "";
-      const content = "No pudimos consultar esa información ahora. Puedes explorar el catálogo o escribir “quiero hablar con un asesor”.";
-      await sendAndStore(conversation, phone, resume ? `${content}\n\n${resume}` : content);
-    } catch (sendError) {
-      console.error("[wh] no se pudo enviar el mensaje de respaldo:", sendError);
-    }
+  } catch {
+    // Fallar enviando no equivale a fallar consultando el RAG: nunca encadenar
+    // una segunda respuesta cuando el resultado de transporte sea incierto.
+    diagnostic({ event: "send.failed", kind: "text" });
   }
 }
 
@@ -149,14 +190,11 @@ async function handleTextMessage(message: RecordValue, contactName: string | nul
   const phone = typeof message.from === "string" ? message.from : undefined;
   const content = typeof textData?.body === "string" ? textData.body.trim() : "";
   if (!waMessageId || !phone || !content) return;
-  if (wasMessageProcessed(waMessageId) || !markMessageProcessed(waMessageId)) return;
-
-  console.log("[wh] ← mensaje de texto recibido");
+  if (!reserveIncomingMessage(waMessageId, "text")) return;
   const conversation = getOrCreateConversation(phone, contactName);
   const messageCountBefore = getRecentHistory(conversation.id, 1).length;
   insertMessage(conversation.id, "user", content, waMessageId);
-  const freshConversation = getConversationById(conversation.id);
-  if (!freshConversation || freshConversation.mode !== "AI") return;
+  if (!canAutomate(conversation)) return;
 
   // Los enlaces del catálogo llevan un identificador estable y se atienden
   // antes de cualquier respuesta genérica.
@@ -189,6 +227,7 @@ async function handleTextMessage(message: RecordValue, contactName: string | nul
         phone,
         `✅ Pedido #${claimed.order.public_code} confirmado. Ahora comparte tu ubicación con el botón de WhatsApp para coordinar la entrega.`,
       );
+      if (!canAutomate(conversation)) return;
       const delivery = await dispatchCatalogLocationRequest(claimed.order.id);
       if (delivery === "failed") {
         await sendAndStore(
@@ -238,6 +277,7 @@ async function handleTextMessage(message: RecordValue, contactName: string | nul
   }
   if (activeOrder?.status === "awaiting_location") {
     if (activeOrder.latitude !== null && activeOrder.longitude !== null) {
+      if (!canAutomate(conversation)) return;
       const delivery = await dispatchCatalogPaymentQr(activeOrder.id);
       if (delivery === "failed") {
         await sendAndStore(
@@ -246,7 +286,7 @@ async function handleTextMessage(message: RecordValue, contactName: string | nul
           "📍 Tu ubicación ya está registrada. El QR de pago está pendiente por un inconveniente técnico; no necesitas enviar nada más por ahora.",
         );
       } else if (delivery === "in_progress") {
-        await sendAndStore(conversation, phone, "📍 Estamos enviando tu QR de pago por este chat.");
+        await sendAndStore(conversation, phone, "El envío del QR está pendiente de confirmación. No lo repetiremos automáticamente; un asesor debe revisarlo.");
       }
       return;
     }
@@ -307,10 +347,11 @@ async function handleLocationMessage(message: RecordValue, contactName: string |
   const latitude = typeof location?.latitude === "number" ? location.latitude : Number.NaN;
   const longitude = typeof location?.longitude === "number" ? location.longitude : Number.NaN;
   if (!waMessageId || !phone || !Number.isFinite(latitude) || !Number.isFinite(longitude)) return;
-  if (wasMessageProcessed(waMessageId) || !markMessageProcessed(waMessageId)) return;
+  if (!reserveIncomingMessage(waMessageId, "location")) return;
 
   const conversation = getOrCreateConversation(phone, contactName);
   insertMessage(conversation.id, "user", "Ubicación de entrega recibida.", waMessageId);
+  if (!canAutomate(conversation)) return;
   const order = getLocationRequestedCatalogOrderForConversation(conversation.id);
   if (!order) {
     await sendAndStore(conversation, phone, "Primero confirma tu pedido desde el catálogo para que podamos usar tu ubicación.");
@@ -323,7 +364,7 @@ async function handleLocationMessage(message: RecordValue, contactName: string |
     name: typeof location?.name === "string" ? location.name : null,
     address: typeof location?.address === "string" ? location.address : null,
   });
-  if (!saved.saved) return;
+  if (!saved.saved || !canAutomate(conversation)) return;
   const delivery = await dispatchCatalogPaymentQr(order.id);
   if (delivery === "failed") {
     await sendAndStore(
@@ -337,10 +378,11 @@ async function handleLocationMessage(message: RecordValue, contactName: string |
 async function handleImageMessage(message: RecordValue, contactName: string | null): Promise<void> {
   const waMessageId = typeof message.id === "string" ? message.id : undefined;
   const phone = typeof message.from === "string" ? message.from : undefined;
-  if (!waMessageId || !phone || wasMessageProcessed(waMessageId) || !markMessageProcessed(waMessageId)) return;
+  if (!waMessageId || !phone || !reserveIncomingMessage(waMessageId, "image")) return;
 
   const conversation = getOrCreateConversation(phone, contactName);
   insertMessage(conversation.id, "user", "Comprobante de pago recibido.", waMessageId);
+  if (!canAutomate(conversation)) return;
   const order = getLatestActiveCatalogOrderForConversation(conversation.id);
   if (!order || order.status !== "awaiting_payment") return;
   markCatalogOrderPaymentProof(order.id);
@@ -359,25 +401,40 @@ async function handleInteractiveEntry(message: RecordValue, contactName: string 
   const waMessageId = typeof message.id === "string" ? message.id : undefined;
   const phone = typeof message.from === "string" ? message.from : undefined;
   if (!waMessageId || !phone) return;
-  if (wasMessageProcessed(waMessageId) || !markMessageProcessed(waMessageId)) return;
+  if (!reserveIncomingMessage(waMessageId, "interactive")) return;
 
   const conversation = getOrCreateConversation(phone, contactName);
   insertMessage(conversation.id, "user", "Interacción recibida.", waMessageId);
-  const freshConversation = getConversationById(conversation.id);
-  if (!freshConversation || freshConversation.mode !== "AI") return;
+  if (!canAutomate(conversation)) return;
   await sendCatalog(conversation, phone, origin);
 }
 
 export async function processWebhookPayload(payload: unknown, origin?: string): Promise<void> {
   if (!isRecord(payload) || payload.object !== "whatsapp_business_account") return;
+  const expectedPhoneId = process.env.META_PHONE_NUMBER_ID;
+  // Fallar cerrado sin reservar WAMIDs ni escribir conversaciones. No normalizar
+  // el identificador: el cliente de envío debe usar exactamente el mismo valor.
+  if (typeof expectedPhoneId !== "string" || !expectedPhoneId || expectedPhoneId.trim() !== expectedPhoneId) {
+    diagnostic({ event: "message.channel_ignored" });
+    return;
+  }
   for (const entry of asArray(payload.entry)) {
     if (!isRecord(entry)) continue;
     for (const change of asArray(entry.changes)) {
       if (!isRecord(change) || change.field !== "messages" || !isRecord(change.value)) continue;
       const value = change.value;
+      const metadata = isRecord(value.metadata) ? value.metadata : undefined;
+      if (typeof metadata?.phone_number_id !== "string" || metadata.phone_number_id !== expectedPhoneId) {
+        diagnostic({ event: "message.channel_ignored" });
+        continue;
+      }
       for (const status of asArray(value.statuses)) {
         if (isRecord(status)) {
-          console.log("[wh] status " + String(status.status ?? "unknown") + " para " + String(status.id ?? "?"));
+          const statusName: MessageStatus = typeof status.status === "string"
+            && ["sent", "delivered", "read", "failed", "deleted"].includes(status.status)
+            ? status.status as MessageStatus : "unknown";
+          const errorCodes = asArray(status.errors).flatMap((error) => isRecord(error) && typeof error.code === "number" ? [error.code] : []);
+          diagnostic({ event: "message.status", message_ref: messageRef(status.id), status: statusName, error_codes: errorCodes });
         }
       }
       const namesByPhone = new Map<string, string | null>();
@@ -398,7 +455,7 @@ export async function processWebhookPayload(payload: unknown, origin?: string): 
         } else if (rawMessage.type === "image") {
           await handleImageMessage(rawMessage, name);
         } else {
-          console.log("[wh] tipo no soportado: " + String(rawMessage.type ?? "unknown"));
+          diagnostic({ event: "message.unsupported", kind: "unknown", message_ref: messageRef(rawMessage.id) });
         }
       }
     }

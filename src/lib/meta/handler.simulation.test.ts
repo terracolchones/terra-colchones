@@ -6,12 +6,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
  * All aliases, messages, media and coordinates below are invented fixtures.
  * These mocks do NOT demonstrate SQLite concurrency or Meta's ban decisions.
  *
- * "KNOWN DEFECT OBSERVED" cases characterize the exact defective behavior of
- * this baseline. Their passing status is NOT approval of those defects and is
- * NOT a regression guarantee for the desired safe behavior. They assert both
- * the preconditions and the observed effect, so an unrelated exception cannot
- * masquerade as a reproduced defect. After correcting each defect, replace its
- * expectations with the intended safe behavior.
+ * D1-D5 cases now assert the corrected safe behavior, not an expected failure.
+ * The distinct-WAMID scenario remains explicitly a baseline observation: this
+ * patch does not introduce a durable queue or serialize different messages.
  */
 const fixture = vi.hoisted(() => ({
   phone: "synthetic-customer-alpha",
@@ -106,6 +103,7 @@ beforeEach(() => {
   vi.stubEnv("PUBLIC_APP_URL", "https://agent.invalid");
   vi.stubEnv("CATALOG_PUBLIC_URL", "https://catalog.invalid");
   vi.spyOn(console, "log").mockImplementation(() => undefined);
+  vi.spyOn(console, "info").mockImplementation(() => undefined);
   vi.spyOn(console, "error").mockImplementation(() => undefined);
   fixture.db.getOrCreateConversation.mockImplementation(conversation);
   fixture.db.getConversationById.mockImplementation(conversation);
@@ -260,25 +258,19 @@ describe("offline handler characterization (no real database or provider)", () =
   });
 });
 
-describe("known defects observed on the baseline — characterization, not approval or fixes", () => {
-  it("KNOWN DEFECT OBSERVED: a message addressed to another channel is reserved, stored and answered", async () => {
+describe("D1-D5 safety regressions", () => {
+  it("D1: a message addressed to another channel is ignored before reservation or any side effect", async () => {
     const otherChannel = "synthetic-channel-other";
     expect(process.env.META_PHONE_NUMBER_ID).toBe(fixture.channel);
     expect(otherChannel).not.toBe(fixture.channel);
     await processWebhookPayload(payload(textMessage(), otherChannel));
-    expect(fixture.db.markMessageProcessed).toHaveBeenCalledExactlyOnceWith("synthetic-wamid-alpha");
-    expect(fixture.db.getOrCreateConversation).toHaveBeenCalledExactlyOnceWith(fixture.phone, null);
-    expect(fixture.db.insertMessage).toHaveBeenCalledWith(1, "user", "Hola", "synthetic-wamid-alpha");
-    expect(fixture.meta.sendTextMessage).toHaveBeenCalledExactlyOnceWith(
-      fixture.phone, "¡Hola! 👋 Bienvenido a Terra. Explora nuestro catálogo y elige el producto que buscas.",
-    );
-    expect(fixture.meta.sendCatalogCtaMessage).toHaveBeenCalledExactlyOnceWith(
-      fixture.phone, "https://catalog.invalid/?checkout=synthetic-checkout-token",
-    );
-    expect(fixture.generateAssistantReply).not.toHaveBeenCalled();
+    expect(fixture.db.markMessageProcessed).not.toHaveBeenCalled();
+    expect(fixture.db.getOrCreateConversation).not.toHaveBeenCalled();
+    expect(fixture.db.insertMessage).not.toHaveBeenCalled();
+    expectNoDelivery();
   });
 
-  it("KNOWN DEFECT OBSERVED: a CTA accepted by Meta followed by a local persistence failure sends a fallback", async () => {
+  it("D2: a CTA accepted by Meta followed by a local persistence failure never sends a fallback", async () => {
     const sequence: string[] = [];
     fixture.messages.push({ id: 1, role: "user", content: "Mensaje anterior simulado", wa_message_id: "synthetic-earlier" });
     fixture.meta.sendCatalogCtaMessage.mockImplementationOnce(async () => {
@@ -296,16 +288,14 @@ describe("known defects observed on the baseline — characterization, not appro
       return { wa_message_id: "synthetic-accepted-fallback" };
     });
     await processWebhookPayload(payload(textMessage("synthetic-catalog-request", "catalogo")));
-    expect(sequence).toEqual(["cta-accepted", "persistence-failed", "fallback-sent"]);
+    expect(sequence).toEqual(["cta-accepted", "persistence-failed"]);
     expect(fixture.meta.sendCatalogCtaMessage).toHaveBeenCalledTimes(1);
     expect(fixture.db.updateMessageWaId).toHaveBeenCalledWith(expect.any(Number), "synthetic-accepted-cta");
-    expect(fixture.meta.sendTextMessage).toHaveBeenCalledExactlyOnceWith(
-      fixture.phone, "No pudimos abrir el catálogo ahora. Escríbenos qué producto buscas y te ayudamos.",
-    );
-    expect(fixture.db.updateMessageWaId).toHaveBeenCalledWith(expect.any(Number), "synthetic-accepted-fallback");
+    expect(fixture.meta.sendTextMessage).not.toHaveBeenCalled();
+    expect(fixture.db.updateMessageWaId).toHaveBeenCalledTimes(1);
   });
 
-  it("KNOWN DEFECT OBSERVED: an image received in HUMAN mode records a proof and sends an automatic acknowledgment", async () => {
+  it("D3: an image received in HUMAN mode is recorded passively, without payment mutation or acknowledgment", async () => {
     fixture.mode = "HUMAN";
     fixture.db.getLatestActiveCatalogOrderForConversation.mockReturnValue(order());
     await processWebhookPayload(payload({
@@ -314,14 +304,13 @@ describe("known defects observed on the baseline — characterization, not appro
     expect(fixture.db.getOrCreateConversation).toHaveBeenCalledExactlyOnceWith(fixture.phone, null);
     expect(fixture.db.getOrCreateConversation.mock.results[0].value.mode).toBe("HUMAN");
     expect(fixture.mode).toBe("HUMAN");
-    expect(fixture.db.getLatestActiveCatalogOrderForConversation).toHaveBeenCalledExactlyOnceWith(1);
-    expect(fixture.db.markCatalogOrderPaymentProof).toHaveBeenCalledExactlyOnceWith("synthetic-order-alpha");
-    expect(fixture.meta.sendTextMessage).toHaveBeenCalledExactlyOnceWith(
-      fixture.phone, "✅ Recibimos el comprobante del pedido #T-TEST-DEMO. Está en revisión; el pago no se aprueba automáticamente.",
-    );
+    expect(fixture.db.insertMessage).toHaveBeenCalledExactlyOnceWith(1, "user", "Comprobante de pago recibido.", "synthetic-image");
+    expect(fixture.db.getLatestActiveCatalogOrderForConversation).not.toHaveBeenCalled();
+    expect(fixture.db.markCatalogOrderPaymentProof).not.toHaveBeenCalled();
+    expectNoDelivery();
   });
 
-  it("KNOWN DEFECT OBSERVED: a location received in HUMAN mode is saved and automatically dispatches a payment QR", async () => {
+  it("D4: a location received in HUMAN mode is recorded passively, without order mutation or a payment QR", async () => {
     fixture.mode = "HUMAN";
     fixture.db.getLocationRequestedCatalogOrderForConversation.mockReturnValue(order("awaiting_location"));
     await processWebhookPayload(payload({
@@ -332,15 +321,13 @@ describe("known defects observed on the baseline — characterization, not appro
     expect(fixture.db.getOrCreateConversation).toHaveBeenCalledExactlyOnceWith(fixture.phone, null);
     expect(fixture.db.getOrCreateConversation.mock.results[0].value.mode).toBe("HUMAN");
     expect(fixture.mode).toBe("HUMAN");
-    expect(fixture.db.getLocationRequestedCatalogOrderForConversation).toHaveBeenCalledExactlyOnceWith(1);
-    expect(fixture.db.saveCatalogOrderLocation).toHaveBeenCalledExactlyOnceWith("synthetic-order-alpha", {
-      latitude: 0, longitude: 0, name: "Synthetic fixture", address: null,
-    });
-    expect(fixture.dispatchCatalogPaymentQr).toHaveBeenCalledExactlyOnceWith("synthetic-order-alpha");
-    expect(fixture.meta.sendTextMessage).not.toHaveBeenCalled();
+    expect(fixture.db.insertMessage).toHaveBeenCalledExactlyOnceWith(1, "user", "Ubicación de entrega recibida.", "synthetic-location");
+    expect(fixture.db.getLocationRequestedCatalogOrderForConversation).not.toHaveBeenCalled();
+    expect(fixture.db.saveCatalogOrderLocation).not.toHaveBeenCalled();
+    expectNoDelivery();
   });
 
-  it("KNOWN DEFECT OBSERVED: a pending RAG response is sent after an operator switches the chat to HUMAN", async () => {
+  it("D5: a pending RAG response is suppressed after an operator switches the chat to HUMAN", async () => {
     const reply = deferred<{ content: string; needsAdvisorConfirmation: boolean }>();
     const modesAtSend: string[] = [];
     fixture.meta.sendTextMessage.mockImplementationOnce(async () => {
@@ -355,8 +342,204 @@ describe("known defects observed on the baseline — characterization, not appro
     fixture.mode = "HUMAN";
     reply.resolve({ content: "Horario público simulado.", needsAdvisorConfirmation: false });
     await processing;
-    expect(modesAtSend).toEqual(["HUMAN"]);
-    expect(fixture.meta.sendTextMessage).toHaveBeenCalledExactlyOnceWith(fixture.phone, "Horario público simulado.");
+    expect(modesAtSend).toEqual([]);
+    expect(fixture.meta.sendTextMessage).not.toHaveBeenCalled();
     expect(fixture.meta.sendCatalogCtaMessage).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    { label: "missing metadata", metadata: undefined },
+    { label: "null metadata", metadata: null },
+    { label: "array metadata", metadata: [] },
+    { label: "missing channel", metadata: {} },
+    { label: "null channel", metadata: { phone_number_id: null } },
+    { label: "numeric channel", metadata: { phone_number_id: 123 } },
+    { label: "empty channel", metadata: { phone_number_id: "" } },
+    { label: "whitespace channel", metadata: { phone_number_id: ` ${fixture.channel} ` } },
+  ])("D1: rejects $label before deduplication or persistence", async ({ metadata }) => {
+    const event = payload(textMessage());
+    Reflect.set(event.entry[0].changes[0].value, "metadata", metadata);
+    await processWebhookPayload(event);
+    expect(fixture.db.wasMessageProcessed).not.toHaveBeenCalled();
+    expect(fixture.db.markMessageProcessed).not.toHaveBeenCalled();
+    expect(fixture.db.getOrCreateConversation).not.toHaveBeenCalled();
+    expect(fixture.db.insertMessage).not.toHaveBeenCalled();
+    expectNoDelivery();
+  });
+
+  it.each([
+    { label: "missing", configured: undefined },
+    { label: "empty", configured: "" },
+    { label: "whitespace", configured: " " },
+    { label: "padded", configured: ` ${fixture.channel}` },
+  ])("D1: fails closed when configured channel is $label", async ({ configured }) => {
+    vi.stubEnv("META_PHONE_NUMBER_ID", configured);
+    await processWebhookPayload(payload(textMessage()));
+    expect(fixture.db.markMessageProcessed).not.toHaveBeenCalled();
+    expect(fixture.db.insertMessage).not.toHaveBeenCalled();
+    expectNoDelivery();
+  });
+
+  it("D1: ignores an unauthorized change but still handles an authorized change in the same payload", async () => {
+    const event = payload(textMessage("synthetic-shared-wamid"), "synthetic-channel-other");
+    event.entry[0].changes.push(payload(textMessage("synthetic-shared-wamid")).entry[0].changes[0]);
+    await processWebhookPayload(event);
+    expect(fixture.db.markMessageProcessed).toHaveBeenCalledExactlyOnceWith("synthetic-shared-wamid");
+    expect(fixture.meta.sendTextMessage).toHaveBeenCalledTimes(1);
+    expect(fixture.meta.sendCatalogCtaMessage).toHaveBeenCalledTimes(1);
+  });
+
+  it("D2: an uncertain CTA transport failure neither retries nor sends a fallback", async () => {
+    fixture.messages.push({ id: 1, role: "user", content: "Mensaje previo simulado", wa_message_id: "synthetic-prior" });
+    fixture.meta.sendCatalogCtaMessage.mockRejectedValueOnce(new Error("synthetic uncertain transport result"));
+    await processWebhookPayload(payload(textMessage("synthetic-uncertain-cta", "catalogo")));
+    expect(fixture.meta.sendCatalogCtaMessage).toHaveBeenCalledTimes(1);
+    expect(fixture.db.updateMessageWaId).not.toHaveBeenCalled();
+    expect(fixture.meta.sendTextMessage).not.toHaveBeenCalled();
+  });
+
+  it("D2: a RAG text accepted before a persistence failure never triggers a second response", async () => {
+    fixture.db.updateMessageWaId.mockImplementationOnce(() => { throw new Error("synthetic persistence failure"); });
+    await processWebhookPayload(payload(textMessage("synthetic-rag-store-fail", "¿Cuáles son los horarios?")));
+    expect(fixture.generateAssistantReply).toHaveBeenCalledTimes(1);
+    expect(fixture.meta.sendTextMessage).toHaveBeenCalledExactlyOnceWith(fixture.phone, "Respuesta pública simulada.");
+    expect(fixture.db.updateMessageWaId).toHaveBeenCalledTimes(1);
+  });
+
+  it("D2: an uncertain RAG send never triggers a fallback response", async () => {
+    fixture.meta.sendTextMessage.mockRejectedValueOnce(new Error("synthetic uncertain transport result"));
+    await processWebhookPayload(payload(textMessage("synthetic-rag-send-fail", "¿Cuáles son los horarios?")));
+    expect(fixture.generateAssistantReply).toHaveBeenCalledTimes(1);
+    expect(fixture.meta.sendTextMessage).toHaveBeenCalledExactlyOnceWith(fixture.phone, "Respuesta pública simulada.");
+    expect(fixture.db.updateMessageWaId).not.toHaveBeenCalled();
+  });
+
+  it("D5: switching to HUMAN while the greeting is pending suppresses the following catalog CTA", async () => {
+    const greeting = deferred<{ wa_message_id: string }>();
+    fixture.meta.sendTextMessage.mockReturnValueOnce(greeting.promise);
+    const processing = processWebhookPayload(payload(textMessage()));
+    expect(fixture.meta.sendTextMessage).toHaveBeenCalledTimes(1);
+    fixture.mode = "HUMAN";
+    greeting.resolve({ wa_message_id: "synthetic-accepted-greeting" });
+    await processing;
+    expect(fixture.db.updateMessageWaId).toHaveBeenCalledWith(expect.any(Number), "synthetic-accepted-greeting");
+    expect(fixture.db.createCatalogCheckoutSession).not.toHaveBeenCalled();
+    expect(fixture.meta.sendCatalogCtaMessage).not.toHaveBeenCalled();
+  });
+
+  it("D5: switching to HUMAN during catalog lookup suppresses its delayed product reply", async () => {
+    const selection = deferred<null>();
+    fixture.parseCatalogLeadContext.mockReturnValueOnce({ productId: "synthetic-product", variantId: null });
+    fixture.getProductForCatalogLead.mockReturnValueOnce(selection.promise);
+    const processing = processWebhookPayload(payload(textMessage("synthetic-product-lookup", "Producto seleccionado simulado")));
+    expect(fixture.getProductForCatalogLead).toHaveBeenCalledExactlyOnceWith("synthetic-product", null);
+    fixture.mode = "HUMAN";
+    selection.resolve(null);
+    await processing;
+    expectNoDelivery();
+  });
+
+  it("D5: an already-started CTA remains recorded after HUMAN takeover, without another send", async () => {
+    const cta = deferred<{ wa_message_id: string }>();
+    fixture.messages.push({ id: 1, role: "user", content: "Mensaje previo simulado", wa_message_id: "synthetic-prior" });
+    fixture.meta.sendCatalogCtaMessage.mockReturnValueOnce(cta.promise);
+    const processing = processWebhookPayload(payload(textMessage("synthetic-cta-pending", "catalogo")));
+    expect(fixture.meta.sendCatalogCtaMessage).toHaveBeenCalledTimes(1);
+    fixture.mode = "HUMAN";
+    cta.resolve({ wa_message_id: "synthetic-accepted-cta" });
+    await processing;
+    expect(fixture.db.updateMessageWaId).toHaveBeenCalledWith(expect.any(Number), "synthetic-accepted-cta");
+    expect(fixture.meta.sendCatalogCtaMessage).toHaveBeenCalledTimes(1);
+    expect(fixture.meta.sendTextMessage).not.toHaveBeenCalled();
+  });
+
+  it("D5: switching to HUMAN during order acknowledgment suppresses the following GPS dispatch", async () => {
+    const acknowledgment = deferred<{ wa_message_id: string }>();
+    fixture.db.claimCatalogOrder.mockReturnValueOnce({ result: "claimed", order: order("awaiting_location") });
+    fixture.meta.sendTextMessage.mockReturnValueOnce(acknowledgment.promise);
+    const processing = processWebhookPayload(payload(textMessage("synthetic-order-confirm", "Hola Terra, confirmo mi pedido #T-TEST-DEMO")));
+    expect(fixture.db.claimCatalogOrder).toHaveBeenCalledExactlyOnceWith("T-TEST-DEMO", 1);
+    expect(fixture.meta.sendTextMessage).toHaveBeenCalledTimes(1);
+    fixture.mode = "HUMAN";
+    acknowledgment.resolve({ wa_message_id: "synthetic-accepted-order" });
+    await processing;
+    expect(fixture.dispatchCatalogLocationRequest).not.toHaveBeenCalled();
+  });
+
+  it("D5: a failed pending RAG request also remains silent after HUMAN takeover", async () => {
+    let reject!: (error: Error) => void;
+    const reply = new Promise<never>((_resolve, fail) => { reject = fail; });
+    fixture.generateAssistantReply.mockReturnValueOnce(reply);
+    const processing = processWebhookPayload(payload(textMessage("synthetic-rag-fail-human", "¿Cuáles son los horarios?")));
+    expect(fixture.generateAssistantReply).toHaveBeenCalledTimes(1);
+    fixture.mode = "HUMAN";
+    reject(new Error("synthetic failed lookup"));
+    await processing;
+    expect(fixture.meta.sendTextMessage).not.toHaveBeenCalled();
+    expect(fixture.meta.sendCatalogCtaMessage).not.toHaveBeenCalled();
+  });
+
+  it("diagnostics retain numeric delivery errors without raw provider IDs or error descriptions", async () => {
+    const privateMarker = "synthetic-private-marker-not-real-data";
+    await processWebhookPayload({ object: "whatsapp_business_account", entry: [{ changes: [{
+      field: "messages", value: { metadata: { phone_number_id: fixture.channel }, statuses: [{
+        id: privateMarker, status: "failed", errors: [
+          { code: 131000, message: privateMarker, details: privateMarker },
+          { code: -1 }, { code: "invalid" }, { code: Number.NaN },
+        ],
+      }] },
+    }] }] });
+    expect(console.info).toHaveBeenCalledTimes(1);
+    const serialized = vi.mocked(console.info).mock.calls[0][1];
+    expect(typeof serialized).toBe("string");
+    const diagnosticRecord = JSON.parse(serialized as string);
+    expect(diagnosticRecord).toMatchObject({ event: "message.status", status: "failed", error_codes: [131000] });
+    expect(diagnosticRecord.message_ref).toMatch(/^[a-f0-9]{32}$/);
+    expect(serialized).not.toContain(privateMarker);
+    expectNoDelivery();
+  });
+
+  it("a failed RAG query logs only its closed diagnostic, not the exception content", async () => {
+    const privateMarker = "synthetic-private-error-not-real-data";
+    fixture.generateAssistantReply.mockRejectedValueOnce(new Error(privateMarker));
+    await processWebhookPayload(payload(textMessage("synthetic-rag-private-error", "¿Cuáles son los horarios?")));
+    const serialized = vi.mocked(console.info).mock.calls.map((call) => call[1]).join("\n");
+    expect(serialized).toContain('"event":"rag.failed"');
+    expect(serialized).not.toContain(privateMarker);
+    expect(console.error).not.toHaveBeenCalled();
+    expect(fixture.meta.sendTextMessage).toHaveBeenCalledExactlyOnceWith(
+      fixture.phone, "No pudimos consultar esa información ahora. Puedes explorar el catálogo o escribir “quiero hablar con un asesor”.",
+    );
+  });
+});
+
+describe("preserved AI-mode commerce behavior", () => {
+  it("keeps the AI image proof acknowledgment and marks it for review", async () => {
+    fixture.db.getLatestActiveCatalogOrderForConversation.mockReturnValue(order());
+    await processWebhookPayload(payload({ id: "synthetic-ai-image", from: fixture.phone, type: "image", image: { id: "synthetic-media" } }));
+    expect(fixture.db.markCatalogOrderPaymentProof).toHaveBeenCalledExactlyOnceWith("synthetic-order-alpha");
+    expect(fixture.meta.sendTextMessage).toHaveBeenCalledExactlyOnceWith(
+      fixture.phone, "✅ Recibimos el comprobante del pedido #T-TEST-DEMO. Está en revisión; el pago no se aprueba automáticamente.",
+    );
+    expect(fixture.mode).toBe("AI");
+  });
+
+  it("keeps the AI location-to-QR flow and suppresses a duplicate location WAMID", async () => {
+    fixture.db.getLocationRequestedCatalogOrderForConversation.mockReturnValue(order("awaiting_location"));
+    const event = payload({ id: "synthetic-ai-location", from: fixture.phone, type: "location", location: { latitude: 0, longitude: 0 } });
+    await processWebhookPayload(event);
+    await processWebhookPayload(event);
+    expect(fixture.db.saveCatalogOrderLocation).toHaveBeenCalledExactlyOnceWith("synthetic-order-alpha", {
+      latitude: 0, longitude: 0, name: null, address: null,
+    });
+    expect(fixture.dispatchCatalogPaymentQr).toHaveBeenCalledExactlyOnceWith("synthetic-order-alpha");
+    expect(fixture.meta.sendTextMessage).not.toHaveBeenCalled();
+  });
+
+  it("keeps the AI order confirmation followed by exactly one GPS dispatch", async () => {
+    fixture.db.claimCatalogOrder.mockReturnValueOnce({ result: "claimed", order: order("awaiting_location") });
+    await processWebhookPayload(payload(textMessage("synthetic-ai-confirm", "Hola Terra, confirmo mi pedido #T-TEST-DEMO")));
+    expect(fixture.meta.sendTextMessage).toHaveBeenCalledTimes(1);
+    expect(fixture.dispatchCatalogLocationRequest).toHaveBeenCalledExactlyOnceWith("synthetic-order-alpha");
   });
 });
