@@ -19,11 +19,13 @@ import {
   type KnowledgeChunk,
   type RetrievedSource,
 } from "@/lib/rag/core";
+import { getPublishedKnowledgeChunks } from "@/lib/rag/published-knowledge";
 
 const knowledgeFile = path.join(process.cwd(), "docs", "rag", "base-conocimiento-terra.md");
 let knowledgePromise: Promise<KnowledgeChunk[]> | undefined;
 const INDEX_RETRY_COOLDOWN_MS = 30_000;
 let indexedSearchRetryAfter = 0;
+let semanticSearchRetryAfter = 0;
 
 export interface RagContext {
   context: string;
@@ -96,21 +98,24 @@ function indexedChunk(value: unknown): IndexedChunk | null {
  * con su recuperación léxica segura, sin interrumpir WhatsApp.
  */
 async function searchIndexedKnowledge(query: string): Promise<IndexedChunk[] | null> {
-  if (!isCatalogConfigured() || Date.now() < indexedSearchRetryAfter) return null;
+  if (!isCatalogConfigured()) return null;
   // Se activa después de desplegar las Edge Functions y el worker. Hasta ese
   // momento la misma RPC entrega FTS, sin depender de un proveedor externo.
-  if (process.env.RAG_SEMANTIC_SEARCH_ENABLED === "true") {
+  if (process.env.RAG_SEMANTIC_SEARCH_ENABLED === "true" && Date.now() >= semanticSearchRetryAfter) {
     const semantic = await getCatalogServerClient().functions.invoke("rag-search", { body: { query } })
       .catch(() => ({ error: true, data: null }));
     if (!semantic.error && semantic.data && typeof semantic.data === "object") {
       const result = semantic.data as { results?: unknown };
       if (Array.isArray(result.results)) {
-        indexedSearchRetryAfter = 0;
+        semanticSearchRetryAfter = 0;
         return result.results.map(indexedChunk).filter((item): item is IndexedChunk => item !== null);
       }
     }
+    semanticSearchRetryAfter = Date.now() + INDEX_RETRY_COOLDOWN_MS;
     console.warn("[rag] La búsqueda semántica no está disponible; se usa FTS.");
   }
+  // A healthy FTS response must not trigger another failing semantic request.
+  if (Date.now() < indexedSearchRetryAfter) return null;
   try {
     const { data, error } = await getCatalogServerClient().rpc("match_terra_rag_chunks", {
       query_text: query,
@@ -142,6 +147,13 @@ function sourceFromIndexedKnowledge(chunk: IndexedChunk): RetrievedSource {
   };
 }
 
+async function secondaryKnowledge(query: string, legacy: KnowledgeChunk[]): Promise<RetrievedSource[]> {
+  const published = retrieveApprovedSources({
+    query, products: [], knowledge: await getPublishedKnowledgeChunks(), maxProducts: 0,
+  });
+  return published.length > 0 ? published : retrieveApprovedSources({ query, products: [], knowledge: legacy, maxProducts: 0 });
+}
+
 /**
  * Obtiene fuentes aprobadas para el último mensaje. No indexa ni reutiliza
  * conversaciones, pagos, comprobantes, ubicaciones ni otros datos privados.
@@ -162,22 +174,32 @@ export async function buildRagContext(
       .map((item) => item.catalogProductId!);
     if (selectedLead?.productId) productIds.push(selectedLead.productId);
     const catalog = await getPublishedCatalogProductsForRagIds(productIds);
-    const catalogSources = retrieveApprovedSources({
+    let catalogSources = retrieveApprovedSources({
       query,
       products: catalog,
       knowledge: [],
       selectedLead,
     }).filter((source) => source.kind === "catalog");
-    const indexedKnowledge = indexed
+    if (catalogSources.length === 0) {
+      // A healthy index with zero hits must not hide published catalog products.
+      const lexicalCatalog = await getPublishedCatalogProductsForRag().catch(() => []);
+      catalogSources = retrieveApprovedSources({ query, products: lexicalCatalog, knowledge: [], selectedLead })
+        .filter((source) => source.kind === "catalog");
+    }
+    const indexedKnowledgeCandidates = indexed
       .filter((item) => item.sourceKind === "knowledge")
       .map(sourceFromIndexedKnowledge);
+    const relevantIds = new Set(retrieveApprovedSources({
+      query, products: [], knowledge: indexedKnowledgeCandidates.map((source) => ({ id: source.id, title: source.label, content: source.content })),
+      maxProducts: 0,
+    }).map((source) => source.id));
+    const indexedKnowledge = indexedKnowledgeCandidates.filter((source) => relevantIds.has(source.id));
 
-    // Mientras el operador migra la base Markdown inicial al panel, la fuente
-    // existente continúa respaldando preguntas corporativas y de políticas.
-    const legacyKnowledge = indexedKnowledge.length > 0
+    // Prefer current published documents before the legacy Markdown fallback.
+    const fallbackKnowledge = indexedKnowledge.length > 0
       ? []
-      : retrieveApprovedSources({ query, products: [], knowledge, maxProducts: 0 });
-    const sources = [...catalogSources, ...indexedKnowledge, ...legacyKnowledge];
+      : await secondaryKnowledge(query, knowledge);
+    const sources = [...catalogSources, ...indexedKnowledge, ...fallbackKnowledge];
     return { context: formatRetrievedSources(sources), sources };
   }
 
@@ -186,11 +208,12 @@ export async function buildRagContext(
     return [];
   });
 
-  const sources = retrieveApprovedSources({
+  const catalogSources = retrieveApprovedSources({
     query,
     products: catalog,
-    knowledge,
+    knowledge: [],
     selectedLead,
   });
+  const sources = [...catalogSources, ...await secondaryKnowledge(query, knowledge)];
   return { context: formatRetrievedSources(sources), sources };
 }

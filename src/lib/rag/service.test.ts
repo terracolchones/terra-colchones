@@ -1,10 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const mocks = vi.hoisted(() => ({ rpc: vi.fn(), semantic: vi.fn(), catalog: vi.fn(), catalogIds: vi.fn(), readFile: vi.fn() }));
+const mocks = vi.hoisted(() => ({ rpc: vi.fn(), semantic: vi.fn(), catalog: vi.fn(), catalogIds: vi.fn(), readFile: vi.fn(), published: vi.fn() }));
 vi.mock("node:fs/promises", () => ({ readFile: mocks.readFile }));
 vi.mock("@/lib/catalog-storefront/server", () => ({
   isCatalogConfigured: () => true,
-  getCatalogServerClient: () => ({ rpc: mocks.rpc, functions: { invoke: mocks.semantic } }),
+  getCatalogServerClient: () => ({ rpc: mocks.rpc, functions: { invoke: mocks.semantic }, from: () => {
+    const query = { select: () => query, eq: () => query, order: () => query, range: mocks.published };
+    return query;
+  } }),
   getPublishedCatalogProductsForRag: mocks.catalog,
   getPublishedCatalogProductsForRagIds: mocks.catalogIds,
 }));
@@ -22,7 +25,66 @@ beforeEach(() => {
   vi.stubEnv("RAG_SEMANTIC_SEARCH_ENABLED", "false");
   mocks.catalog.mockResolvedValue([]);
   mocks.catalogIds.mockResolvedValue([]);
+  mocks.published.mockResolvedValue({ data: [], error: null });
   mocks.readFile.mockResolvedValue("# Terra\n\n## Horarios\nEl horario de atención debe consultarse al equipo.");
+});
+
+describe("published knowledge as a secondary source", () => {
+  const publishedPolicy = { id: "synthetic-policy-v1", status: "published", rag_documents: { title: "Garantía aprobada" },
+    content: "La garantía cubre defectos de fabricación durante 12 meses." };
+
+  it.each(["empty", "failed"])("retrieves a relevant published policy when the index is %s", async (mode) => {
+    mocks.rpc.mockResolvedValue({ data: mode === "empty" ? [] : null, error: mode === "failed" ? { message: "synthetic provider failure" } : null });
+    mocks.published.mockResolvedValue({ data: [publishedPolicy], error: null });
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const { buildRagContext } = await import("./service");
+    const result = await buildRagContext([{ ...history[0], content: "¿Qué cubre la garantía?" }]);
+    expect(result.sources).toHaveLength(1);
+    expect(result.sources[0].id).toBe("published-synthetic-policy-v1-0");
+    expect(result.context).toContain("12 meses");
+  });
+
+  it("does not query the secondary store when indexed knowledge is relevant", async () => {
+    mocks.rpc.mockResolvedValue(indexedResponse);
+    const { buildRagContext } = await import("./service");
+    await buildRagContext(history);
+    expect(mocks.published).not.toHaveBeenCalled();
+  });
+
+  it("does not inject unrelated documents or draft content", async () => {
+    mocks.rpc.mockResolvedValue({ data: [], error: null });
+    mocks.published.mockResolvedValue({ data: [
+      { ...publishedPolicy, status: "draft", content: "La garantía cubre DRAFT_ONLY_SENTINEL durante 99 meses." },
+      { ...publishedPolicy, id: "synthetic-unrelated", rag_documents: { title: "Decoración" }, content: "Decoración artesanal con MISMATCH_SENTINEL y acabados rústicos." },
+    ], error: null });
+    const { buildRagContext } = await import("./service");
+    const result = await buildRagContext([{ ...history[0], content: "¿Qué cubre la garantía?" }]);
+    expect(JSON.stringify(result)).not.toContain("DRAFT_ONLY_SENTINEL");
+    expect(JSON.stringify(result)).not.toContain("MISMATCH_SENTINEL");
+  });
+
+  it("uses published payment evidence without forcing an advisor reply", async () => {
+    mocks.rpc.mockResolvedValue({ data: [], error: null });
+    mocks.published.mockResolvedValue({ data: [{ ...publishedPolicy, rag_documents: { title: "Formas de pago" },
+      content: "Las formas de pago permiten pagar mediante transferencia o al recibir." }], error: null });
+    const { buildRagContext } = await import("./service");
+    const { createAssistantResponder } = await import("../behavior/respond");
+    const complete = vi.fn().mockResolvedValue("Puedes pagar al recibir, según la política publicada.");
+    const respond = createAssistantResponder({ getActiveBehavior: () => ({ id: 0, instructions: "Asistente de prueba", createdAt: "" }), retrieve: buildRagContext, complete });
+    const result = await respond([{ ...history[0], content: "¿Se puede pagar al recibir?" }]);
+    expect(complete).toHaveBeenCalledOnce();
+    expect(result.needsAdvisorConfirmation).toBe(false);
+    expect(result.content).toContain("al recibir");
+  });
+
+  it("searches the published catalog when a healthy index has no product hits", async () => {
+    mocks.rpc.mockResolvedValue({ data: [], error: null });
+    mocks.catalog.mockResolvedValue([{ id: "synthetic-product", name: "Colchón de prueba", category: "Colchones", published: true,
+      availability: "available", priceFrom: 999, shortDescription: "", description: "", specifications: [], variants: [] }]);
+    const { buildRagContext } = await import("./service");
+    const result = await buildRagContext([{ ...history[0], content: "¿Cuánto cuesta el colchón?" }]);
+    expect(result.sources.some((source) => source.kind === "catalog" && source.content.includes("Bs 999"))).toBe(true);
+  });
 });
 afterEach(() => { vi.useRealTimers(); vi.unstubAllEnvs(); vi.restoreAllMocks(); });
 
@@ -78,5 +140,26 @@ describe("recoverable knowledge index", () => {
     const { buildRagContext } = await import("./service");
     expect((await buildRagContext(history)).sources[0].id).toBe("knowledge-synthetic-hours");
     expect(mocks.rpc).toHaveBeenCalledTimes(1);
+  });
+
+  it("backs off a failed semantic service independently of successful FTS and retries after 30 seconds", async () => {
+    vi.stubEnv("RAG_SEMANTIC_SEARCH_ENABLED", "true");
+    mocks.semantic.mockResolvedValueOnce({ data: null, error: { status: 401, message: "PRIVATE_SEMANTIC_SENTINEL" } })
+      .mockResolvedValue({ data: { results: indexedResponse.data }, error: null });
+    mocks.rpc.mockResolvedValue(indexedResponse);
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const { buildRagContext } = await import("./service");
+    await buildRagContext(history);
+    await buildRagContext(history);
+    vi.advanceTimersByTime(29_999);
+    await buildRagContext(history);
+    expect(mocks.semantic).toHaveBeenCalledTimes(1);
+    expect(mocks.rpc).toHaveBeenCalledTimes(3);
+    vi.advanceTimersByTime(1);
+    const recovered = await buildRagContext(history);
+    expect(mocks.semantic).toHaveBeenCalledTimes(2);
+    expect(mocks.rpc).toHaveBeenCalledTimes(3);
+    expect(recovered.sources[0].id).toBe("knowledge-synthetic-hours");
+    expect(JSON.stringify(warn.mock.calls)).not.toContain("PRIVATE_SEMANTIC_SENTINEL");
   });
 });

@@ -66,6 +66,7 @@ const QUERIES = [
 const allowedQueryText = new Set(QUERIES.map(({ text }) => text));
 const allowedModules = new Set([
   "src/lib/rag/service.ts", "src/lib/rag/core.ts", "src/lib/rag/policy.ts",
+  "src/lib/rag/published-knowledge.ts", "src/lib/rag/chunking.ts",
   "src/lib/catalog-storefront/server.ts", "src/lib/catalog-storefront/whatsapp.ts",
   "src/lib/catalog-storefront/demo.ts", "src/lib/message-routing.ts",
 ].map((file) => path.resolve(root, file)));
@@ -89,7 +90,9 @@ function syntheticResponse(url, rpcBody) {
   const table = url.pathname.split("/").at(-1);
   const documents = ["garantia", "formas_pago", "direccion_comercial"];
   let data = [];
-  if (table === "rag_document_versions") data = documents.map((id) => ({ id: `synthetic-version-${id}`, document_id: `synthetic-document-${id}`, rag_documents: { title: id, kind: "company" } }));
+  if (table === "rag_document_versions") data = documents.map((id) => ({ id: `synthetic-version-${id}`, document_id: `synthetic-document-${id}`, status: "published",
+    content: { garantia: "La garantía ficticia cubre defectos de fabricación durante 12 meses.", formas_pago: "Puedes pagar por transferencia o al recibir según la política ficticia.", direccion_comercial: "La dirección de la tienda ficticia es el Pasaje de Demostración." }[id],
+    rag_documents: { title: id, kind: "company" } }));
   if (table === "rag_chunks") data = documents.map((id) => ({ id: `synthetic-chunk-${id}`, document_version_id: `synthetic-version-${id}` }));
   if (table === "catalog_products") data = [{
     id: "synthetic-product", name: "Colchón ficticio", slug: "colchon-ficticio", category: "Colchones", description: "Colchón ficticio para verificación", published: true,
@@ -117,7 +120,8 @@ async function readOnlyFetch(input, options = {}) {
   let permitted = false;
   let rpcBody;
   if (method === "GET" && url.pathname === "/rest/v1/catalog_products") permitted = url.searchParams.get("published") === "eq.true";
-  if (method === "GET" && url.pathname === "/rest/v1/rag_document_versions") permitted = url.searchParams.get("status") === "eq.published" && url.searchParams.get("select") === "id,document_id,rag_documents(title,kind)";
+  if (method === "GET" && url.pathname === "/rest/v1/rag_document_versions") permitted = url.searchParams.get("status") === "eq.published"
+    && ["id,document_id,rag_documents(title,kind)", "id,status,content,rag_documents(title)"].includes(url.searchParams.get("select"));
   if (method === "GET" && url.pathname === "/rest/v1/rag_chunks") {
     const selected = url.searchParams.get("document_version_id") ?? "";
     const ids = /^in\.(\(.*\))$/.test(selected) ? selected.slice(4, -1).split(",").map((id) => id.replaceAll('"', "")) : [];
@@ -221,14 +225,16 @@ try {
       const sources = result.sources.map((source) => ({
         kind: source.kind, label: genericLabel(source.label, source.kind),
         publishedIndexVerified: source.kind === "knowledge" ? publicationInventoryComplete && publishedChunkIds.has(source.id.replace(/^knowledge-/, "")) : null,
+        publishedDocumentVerified: source.kind === "knowledge" ? publicationInventoryComplete && [...publishedVersionIds].some((id) => source.id.startsWith(`published-${id}-`)) : null,
       }));
       const requests = report.requests.slice(before);
       const semanticSucceeded = requests.some((request) => request.operation === "rag-search" && request.available && request.resultEnvelopeValid);
       const ftsSucceeded = requests.some((request) => request.operation === "match_terra_rag_chunks" && request.available && request.resultEnvelopeValid);
       report.queries.push({ id: query.id, status: "completed", contextAvailable: Boolean(result.context.trim()), sourceCount: sources.length, sources,
         answerSupportedByPolicy: !policy.requiresHumanHandoffForQuery(query.text, result.sources),
+        semanticRequestAttempted: requests.some((request) => request.operation === "rag-search"),
         semanticRequestSucceeded: semanticSucceeded, indexRequestSucceeded: semanticSucceeded || ftsSucceeded,
-        retrievalPath: semanticSucceeded ? "semantic_index" : ftsSucceeded ? "fts_index" : "lexical_fallback",
+        retrievalPath: sources.some((source) => source.publishedDocumentVerified) ? "published_lexical" : semanticSucceeded ? "semantic_index" : ftsSucceeded ? "fts_index" : "lexical_fallback",
         semanticFallbackUsed: useSemantic && !semanticSucceeded,
       });
     } catch { report.queries.push({ id: query.id, status: "unavailable", sourceCount: null, contextAvailable: false }); }

@@ -2,6 +2,7 @@ import "server-only";
 
 import { getCatalogServerClient, isCatalogConfigured } from "@/lib/catalog-storefront/server";
 import { chunkKnowledgeContent } from "@/lib/rag/chunking";
+import { invalidatePublishedKnowledgeCache } from "@/lib/rag/published-knowledge";
 import {
   KNOWLEDGE_KINDS,
   type KnowledgeDocumentSummary,
@@ -205,6 +206,7 @@ export async function publishKnowledgeDraft(documentId: string): Promise<Knowled
     p_chunks: chunks,
   });
   if (error) throw serviceError(error, "No se pudo publicar el conocimiento.");
+  invalidatePublishedKnowledgeCache();
 
   const published = (await listKnowledgeDocuments()).find((item) => item.id === documentId);
   if (!published) throw new KnowledgeServiceError("El documento fue publicado, pero no se pudo volver a leer.");
