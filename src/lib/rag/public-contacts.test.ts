@@ -41,11 +41,57 @@ Formas de pago
 Se acepta efectivo o QR.`;
 const chunks: KnowledgeChunk[] = [{ id: "published-synthetic-version-0", title: "Documento publicado", content: approved }];
 const reply = (...history: Message[]) => buildPublicDirectoryReply(sanitizeHistory(history), chunks)?.content;
+const warm = (content: string) => `Claro 😊, te comparto la información:\n\n${content}`;
 
 describe("published contact ownership and city context", () => {
+  it.each(["Quiero dirección de Cochabamba", "Dame los datos de Cochabamba", "Dame el mapa de Cocha"])("prioritizes published branch name and map for %s", (query) => {
+    expect(shouldRetrievePublicDirectory([message(query)])).toBe(true);
+    const result = reply(message(query));
+    expect(result).toMatch(/^Claro 😊,/);
+    expect(result).toContain("📍 Sucursal Central - Cochabamba\nhttps://maps.google.com/?q=synthetic-place\nDirección: Calle Sintética #20.");
+    expect(result).not.toContain("asesor debe");
+  });
+  it.each(["Cocha", "Me puedes dar nuevamente de cocha"])("uses the new published city for the followup %s", (query) => {
+    const history = [message("Quiero dirección de Ciudad Aurora"), message("📍 Sucursal Central - Ciudad Aurora\nhttps://bit.ly/old-history-map", "assistant"), message(query)];
+    expect(shouldRetrievePublicDirectory(sanitizeHistory(history))).toBe(true);
+    const result = reply(...history);
+    expect(result).toContain("📍 Sucursal Central - Cochabamba\nhttps://maps.google.com/?q=synthetic-place");
+    expect(result).not.toContain("Ciudad Aurora");
+    expect(result).not.toContain("old-history-map");
+  });
+  it("treats all addresses as all published cities, overriding the previous single city", () => {
+    const result = reply(message("Quiero dirección de Cochabamba"), message("Dame todas tus direcciones"));
+    expect(result).toContain("Sucursal Central - Cochabamba\nhttps://maps.google.com/?q=synthetic-place");
+    expect(result).toContain("Sucursal Central - Ciudad Aurora\nhttps://bit.ly/synthetic-approved-map");
+    expect(result).toContain("Sucursal Central - Puerto Claro\nNo tengo un enlace de mapa publicado para esta sucursal.");
+    expect(result).not.toContain("omitido");
+  });
+  it("selects a named branch and asks for a city when its name is ambiguous", () => {
+    const directory = [...chunks, { id: "published-synthetic-south-0", title: "", content: "Sucursal 2 Sur - Ciudad Aurora\n- Dirección: Avenida Sur Sintética.\n- Ubicación: https://bit.ly/synthetic-south-map\n\nSucursal 3 Norte - Ciudad Aurora\n- Dirección: Avenida Norte Sintética.\n- Ubicación: https://bit.ly/synthetic-north-map" }];
+    const result = buildPublicDirectoryReply([message("Dame el mapa de la sucursal Sur de Ciudad Aurora")], directory)?.content;
+    expect(result).toContain("📍 Sucursal 2 Sur - Ciudad Aurora\nhttps://bit.ly/synthetic-south-map");
+    expect(result).not.toContain("synthetic-north-map");
+    expect(result).not.toContain("Sucursal Central");
+    expect(buildPublicDirectoryReply([message("Dame el mapa de la sucursal Central")], directory)?.content).toContain("¿De qué ciudad");
+  });
+  it("does not use the Cocha alias if no published Cochabamba entry exists", () => {
+    const otherCity = [{ id: "published-synthetic-other-0", title: "", content: "Sucursal Central - Ciudad Aurora\n- Ubicación: https://bit.ly/synthetic-map" }];
+    const result = buildPublicDirectoryReply([message("Dame la dirección de Ciudad Aurora"), message("Cocha")], otherCity)?.content;
+    expect(result).toContain("No encuentro datos publicados");
+    expect(result).not.toContain("https://");
+  });
+  it("does not recover old indexed maps or private checkout locations when the published directory is unavailable", () => {
+    expect(buildPublicDirectoryReply([message("Quiero dirección de Cochabamba")], [])?.content).toContain("No pude consultar");
+    const missing = buildPublicDirectoryReply([message("Quiero dirección de Ciudad Aurora"), message("📍 Sucursal Central - Ciudad Aurora", "assistant"), message("Cocha")], []);
+    expect(missing?.content).toContain("No pude consultar");
+    expect(missing?.sources).toEqual([]);
+    for (const query of ["Envíame ubicación", "GPS", "Mi dirección es Avenida Privada", "Mi ubicación es -11.123456,-22.123456"]) {
+      expect(shouldRetrievePublicDirectory([message("Dame todas tus direcciones"), message(query)])).toBe(false);
+    }
+  });
   it("preserves published names and phone text, with no WhatsApp links or Markdown", () => {
     const result = reply(message("Dame los número de Cochabamba"));
-    expect(result).toBe("Cochabamba\nAsesor Tres: 70000003\nAsesora Cuatro: 70000004");
+    expect(result).toBe(warm("Cochabamba\nAsesor Tres: 70000003\nAsesora Cuatro: 70000004"));
   });
   it("recognizes a unique adjacent city-name typo without changing the official spelling", () => {
     expect(reply(message("Dame los números de Cochabamab"))).toContain("Cochabamba\nAsesor Tres: 70000003");
@@ -78,8 +124,8 @@ describe("published contact ownership and city context", () => {
   });
   it("selects a named advisor only, and supports the named followup after contact details", () => {
     const result = reply(message("Dame los teléfonos de Cochabamba"), message("¿Y Asesora Cuatro?"));
-    expect(result).toBe("Cochabamba\nAsesora Cuatro: 70000004");
-    expect(reply(message("Dame el número de Asesor Tres"))).toBe("Cochabamba\nAsesor Tres: 70000003");
+    expect(result).toBe(warm("Cochabamba\nAsesora Cuatro: 70000004"));
+    expect(reply(message("Dame el número de Asesor Tres"))).toBe(warm("Cochabamba\nAsesor Tres: 70000003"));
   });
   it("supports a city answer to the preceding directory question, without intercepting thanks", () => {
     expect(reply(message("Dame los números"), message("¿De qué ciudad necesitas los números de contacto?", "assistant"), message("Cochabamba"))).toContain("70000003");
@@ -91,7 +137,7 @@ describe("published contact ownership and city context", () => {
   });
   it("resolves an explicit place/person pronoun only using the published context", () => {
     expect(reply(message("Dame los teléfonos de Cochabamba"), message("Dame el teléfono de allí"))).toContain("70000003");
-    expect(reply(message("Dame el teléfono de Asesora Cuatro"), message("¿Y el número de ella?"))).toBe("Cochabamba\nAsesora Cuatro: 70000004");
+    expect(reply(message("Dame el teléfono de Asesora Cuatro"), message("¿Y el número de ella?"))).toBe(warm("Cochabamba\nAsesora Cuatro: 70000004"));
     expect(reply(message("Cochabamba"), message("Dame el número de un asesor"))).toContain("70000003");
   });
   it("does not treat financial or order fields inside a public section as contact numbers", () => {
@@ -110,7 +156,7 @@ describe("published contact ownership and city context", () => {
   });
   it("never transfers one city's hours to another city", () => {
     const result = reply(message("Ciudad Aurora"), message("Lunes a sábado: de 09:00 a 18:00", "assistant"), message("Puerto Claro"), message("Horarios de atención?"));
-    expect(result).toBe("Puerto Claro\nNo tengo un horario publicado para esta sucursal.");
+    expect(result).toBe(warm("Puerto Claro\nNo tengo un horario publicado para esta sucursal."));
     expect(reply(message("¿Cuál es el horario de Ciudad Aurora?"))).toContain("09:00 a 18:00");
   });
   it("reassembles city/contact boundaries only within the same published version", () => {
@@ -121,7 +167,7 @@ describe("published contact ownership and city context", () => {
       { id: "knowledge-old-index", title: "Ciudad Aurora", content: "Pedidos e información - Ciudad Aurora\n- Persona Antigua: 70000008" },
     ];
     const result = buildPublicDirectoryReply([message("Dame los teléfonos de Ciudad Aurora")], split)?.content;
-    expect(result).toBe("Ciudad Aurora\nAsesor Uno: 70000001");
+    expect(result).toBe(warm("Ciudad Aurora\nAsesor Uno: 70000001"));
     expect(parsePublishedDirectory(split)[0].contacts).toHaveLength(1);
   });
   it("clarifies duplicate names across cities and does not guess among conflicting numbers", () => {

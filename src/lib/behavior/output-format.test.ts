@@ -1,7 +1,39 @@
 import { describe, expect, it } from "vitest";
-import { containsInternalPlaceholder, formatAssistantText, hasUnsupportedPublicContact } from "./output-format";
+import { appendMissingBranchBlocks, containsInternalPlaceholder, formatAssistantText, hasUnsupportedPublicContact } from "./output-format";
 
 describe("customer-facing plain text", () => {
+  it("preserves an approved branch-map pair without duplicating an already complete block", () => {
+    const block = "📍 Sucursal Central - Ciudad Prueba\nhttps://bit.ly/synthetic-map\nDirección: Calle Sintética.";
+    expect(appendMissingBranchBlocks(`Claro 😊\n\n${block}`, [block])).toBe(`Claro 😊\n\n${block}`);
+    expect(appendMissingBranchBlocks("Claro, puedes visitarnos.", [block])).toContain(block);
+  });
+  it("discards invented or swapped model maps and returns only the published branch pairs", () => {
+    const first = "📍 Sucursal Central - Ciudad Aurora\nhttps://maps.example.invalid/aurora";
+    const second = "📍 Sucursal Central - Cochabamba\nhttps://maps.example.invalid/cochabamba";
+    for (const model of ["📍 Sucursal Central - Cochabamba\nhttps://maps.example.invalid/aurora",
+      "📍 Sucursal Central - Cochabamba\n\nhttps://maps.example.invalid/aurora",
+      "📍 Sucursal Central - Cochabamba\nhttps://maps.example.invalid/invented"]) {
+      const result = appendMissingBranchBlocks(model, [first, second]);
+      expect(result).toContain(first);
+      expect(result).toContain(second);
+      expect(result).not.toContain("invented");
+      expect(result).not.toContain("📍 Sucursal Central - Cochabamba\nhttps://maps.example.invalid/aurora");
+    }
+  });
+  it("keeps complete verified links when the model reply exceeds the WhatsApp text budget", () => {
+    const block = "📍 Sucursal Central - Ciudad Prueba\nhttps://bit.ly/synthetic-approved-map\nDirección: Avenida Sintética.";
+    const result = appendMissingBranchBlocks("Descripción extensa. ".repeat(500), [block]);
+    expect(result.length).toBeLessThanOrEqual(4096);
+    expect(result).toContain(block);
+    expect(result).not.toContain("Descripción extensa");
+  });
+  it("asks for a city instead of cutting links when the full directory itself exceeds one message", () => {
+    const blocks = Array.from({ length: 80 }, (_, index) => `📍 Sucursal ${index} - Ciudad Sintética\nhttps://maps.example.invalid/synthetic-${index}\nDirección: Avenida de Prueba.`);
+    const result = appendMissingBranchBlocks("Claro, te comparto las sucursales.", blocks);
+    expect(result.length).toBeLessThanOrEqual(4096);
+    expect(result).toContain("¿De qué ciudad");
+    expect(result).not.toContain("https://");
+  });
   it("removes Markdown without changing approved name/phone values", () => {
     expect(formatAssistantText("**Contactos**\n* *Asesora Sintética:* 70000001")).toBe("Contactos\nAsesora Sintética: 70000001");
   });

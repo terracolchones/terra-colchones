@@ -1,12 +1,12 @@
 import type { Message } from "@/lib/db";
-import { isPublicCompanyQuestion, isPublicContactQuestion } from "@/lib/message-routing";
+import { hasSensitiveCommerceData, isPublicContactQuestion, isPublicDirectoryQuestion, requestsCheckoutAction } from "@/lib/message-routing";
 import { ADVISOR_NOTICE } from "@/lib/behavior/instructions";
 import type { KnowledgeChunk, RetrievedSource } from "./core";
 
 interface Contact { name: string; phone: string; }
 interface Office { title: string; address?: string; map?: string; }
 interface DirectoryCity { name: string; contacts: Contact[]; offices: Office[]; hours: string[]; }
-export interface DirectoryReply { content: string; sources: RetrievedSource[]; }
+export interface DirectoryReply { content: string; sources: RetrievedSource[]; branchBlocks?: string[]; }
 
 function normalize(value: string): string {
   return value.normalize("NFD").replace(/\p{Diacritic}/gu, "").toLocaleLowerCase("es");
@@ -112,7 +112,8 @@ function namesIn(text: string, cities: DirectoryCity[]): string[] {
 }
 
 function citiesIn(text: string, cities: DirectoryCity[]): DirectoryCity[] {
-  const exact = cities.filter((city) => hasName(text, city.name));
+  const exact = cities.filter((city) => hasName(text, city.name)
+    || (normalize(city.name) === "cochabamba" && hasName(text, "cocha")));
   if (exact.length) return exact;
   const words = normalize(text).match(/[a-z]{5,}/g) ?? [];
   // Accept one substitution/transposition only when it identifies one published city.
@@ -125,10 +126,32 @@ function citiesIn(text: string, cities: DirectoryCity[]): DirectoryCity[] {
   return matches.length === 1 ? matches : [];
 }
 
-const DIRECTORY_TOPIC = /\b(?:horarios?|direccion(?:es)?|ubicacion(?:es)?|sucursales?|oficinas?)\b/;
 const OTHER_TOPIC = /\b(?:precios?|cuanto|cuesta|cotizacion|stock|disponible|garantias?|pagos?|pagar|qr|comprobantes?|entregas?|entregan|envios?|envian|colchon(?:es)?|sillon(?:es)?|almohadas?|muebles?|productos?|catalogos?)\b/;
 function explicitDirectoryQuestion(content: string): boolean {
-  return isPublicContactQuestion(content) || (isPublicCompanyQuestion(content) && DIRECTORY_TOPIC.test(normalize(content)));
+  return isPublicDirectoryQuestion(content);
+}
+
+function branchName(office: Office, city: DirectoryCity): string {
+  return office.title.replace(/\s+[-–—:]\s+[^-–—:]+$/, "").replace(/^sucursal\s*(?:\d+\s*)?/i, "").trim() || city.name;
+}
+
+function branchNamesIn(query: string, cities: DirectoryCity[]): string[] {
+  return [...new Set(cities.flatMap((city) => city.offices.map((office) => branchName(office, city))))]
+    .filter((name) => hasName(query, name));
+}
+
+function repeatDirectoryRequest(query: string): boolean {
+  return /\b(?:nuevamente|de nuevo|otra vez)\b/.test(normalize(query))
+    && /\b(?:dar|dame|pasar|pasame|enviar|enviame|mandar|mandame|compartir|mostrar|ver)\b/.test(normalize(query))
+    && !OTHER_TOPIC.test(normalize(query));
+}
+
+function bareDirectoryContinuation(query: string, previous: Message[]): boolean {
+  const text = normalize(query).replace(/[¿?!.]/g, "").trim();
+  return /^[a-z]+(?:\s+[a-z]+){0,2}$/.test(text) && !OTHER_TOPIC.test(text)
+    && !/\b(?:gracias|hola|adios|bien|luego|bueno|perfecto|vale|ok|entendido|listo|estoy|estas|quiero|necesito|puedo|puedes|si|no)\b/.test(text)
+    && !hasSensitiveCommerceData(query) && !requestsCheckoutAction(query)
+    && previous.some((message) => message.role === "user" && explicitDirectoryQuestion(message.content));
 }
 
 /** No customer values are retrieved. The caller supplies already minimized history. */
@@ -136,6 +159,7 @@ export function shouldRetrievePublicDirectory(history: Message[]): boolean {
   const userMessages = history.filter((message) => message.role === "user");
   const latest = userMessages.at(-1)?.content ?? "";
   if (explicitDirectoryQuestion(latest)) return true;
+  if (hasSensitiveCommerceData(latest) || requestsCheckoutAction(latest)) return false;
   // A short city answer can complete a directory clarification. The resolver still must match a published city.
   return /^[\p{L}\s¿?!.]{2,60}$/u.test(latest) && !OTHER_TOPIC.test(normalize(latest))
     && userMessages.slice(-3, -1).some((message) => explicitDirectoryQuestion(message.content));
@@ -154,13 +178,18 @@ function isClearFollowup(query: string, previous: Message[]): boolean {
 
 function hasUnknownTarget(query: string, cities: DirectoryCity[]): boolean {
   let target = normalize(query).match(/\b(?:numeros?|telefonos?|celulares?|contactos?|whatsapp)\s+(?:de|del|para)\s+(.+)/)?.[1]
+    ?? normalize(query).match(/\b(?:direccion(?:es)?|ubicacion(?:es)?|mapas?|datos|sucursal(?:es)?|oficinas?)\s+(?:de|del|en|para)\s+(.+)/)?.[1]
     ?? normalize(query).match(/^(?:¿?\s*y\s+)?(?:el\s+|la\s+)?de\s+(.+)/)?.[1]
     ?? normalize(query).match(/^¿?\s*y\s+(.+)/)?.[1];
   if (!target) return false;
   target = target.split(/\s+y\s+(?:cuanto|que|como|cuando|formas?|metodos?|envios?|entregas?|pagos?|garantias?)|[?!;]/)[0];
   for (const city of cities) {
-    const names = [city.name, ...city.contacts.map((contact) => contact.name)];
-    for (const name of names) target = target.replaceAll(normalize(name), " ");
+    const names = [city.name, ...city.contacts.map((contact) => contact.name), ...city.offices.map((office) => branchName(office, city)),
+      ...(normalize(city.name) === "cochabamba" ? ["cocha"] : [])];
+    for (const name of names) {
+      const escaped = normalize(name).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      target = target.replace(new RegExp(`(^|[^a-z])${escaped}(?=$|[^a-z])`, "g"), "$1 ");
+    }
   }
   // An accepted city typo is still a known target; never echo the misspelling in the answer.
   if (citiesIn(query, cities).length === 1) {
@@ -169,15 +198,20 @@ function hasUnknownTarget(query: string, cities: DirectoryCity[]): boolean {
       && ([...word].filter((letter, index) => letter !== name[index]).length <= 1
         || [...word].some((_, index) => `${word.slice(0, index)}${word[index + 1] ?? ""}${word[index]}${word.slice(index + 2)}` === name)) ? " " : word);
   }
-  return target.replace(/\b(?:y|el|la|los|las|un|una|de|del|en|para|a|su|sus|ese|esa|este|esta|esos|esas|estos|estas|ella|ellas|ellos|ahi|alli|alla|aqui|contacto|contactos|numero|numeros|telefono|telefonos|celular|celulares|asesor|asesora|asesores|asesoras|atencion|horarios?|direccion(?:es)?|ubicacion(?:es)?|datos|oficina|oficinas|sucursal|sucursales|ciudad|ciudades|tienda|local|terra|ustedes|tanto|por|favor)\b/g, " ").replace(/[^a-z]/g, "").length > 0;
+  return target.replace(/\b(?:y|el|la|los|las|un|una|de|del|en|para|a|su|sus|ese|esa|este|esta|esos|esas|estos|estas|ella|ellas|ellos|ahi|alli|alla|aqui|contacto|contactos|numero|numeros|telefono|telefonos|celular|celulares|asesor|asesora|asesores|asesoras|atencion|horarios?|direccion(?:es)?|ubicacion(?:es)?|mapas?|datos|oficina|oficinas|sucursal|sucursales|ciudad|ciudades|tienda|local|terra|ustedes|tanto|por|favor)\b/g, " ").replace(/[^a-z]/g, "").length > 0;
 }
 
 function requestedFields(query: string) {
   const text = normalize(query);
+  const contacts = isPublicContactQuestion(query);
+  const offices = /\b(?:direccion(?:es)?|ubicacion(?:es)?|sucursal(?:es)?|oficinas?|mapas?)\b|\b(?:donde estan|como llego)\b/.test(text)
+    || (/\bgps\b/.test(text) && explicitDirectoryQuestion(query));
+  const hours = /\bhorarios?\b/.test(text);
+  const details = !contacts && !offices && !hours && /\b(?:datos|informacion|detalles)\b/.test(text) && explicitDirectoryQuestion(query);
   return {
-    contacts: isPublicContactQuestion(query),
-    offices: /\b(?:direccion(?:es)?|ubicacion(?:es)?|sucursales?|oficinas?)\b/.test(text),
-    hours: /\bhorarios?\b/.test(text),
+    contacts: contacts || details,
+    offices: offices || details,
+    hours: hours || details,
   };
 }
 
@@ -190,19 +224,26 @@ export function buildPublicDirectoryReply(history: Message[], chunks: KnowledgeC
   const clearFollowup = isClearFollowup(query, previousHistory);
   const cities = parsePublishedDirectory(chunks);
   if (cities.length === 0) {
-    return contactQuestion || clearFollowup ? { content: `No tengo un contacto publicado que pueda confirmar ahora. ${ADVISOR_NOTICE}`, sources: [] } : null;
+    return contactQuestion || clearFollowup || bareDirectoryContinuation(query, previousHistory) || requestedFields(query).offices || (repeatDirectoryRequest(query) && previousHistory.some((message) => message.role === "user" && explicitDirectoryQuestion(message.content)))
+      ? { content: contactQuestion || previousHistory.some((message) => message.role === "user" && isPublicContactQuestion(message.content))
+        ? `No tengo un contacto publicado que pueda confirmar ahora. ${ADVISOR_NOTICE}` : `No pude consultar la información publicada de las sucursales ahora. ${ADVISOR_NOTICE}`, sources: [] } : null;
   }
   const directCities = citiesIn(query, cities);
+  if (hasName(query, "cocha") && !cities.some((city) => normalize(city.name) === "cochabamba")) {
+    return { content: `No encuentro datos publicados para esa sucursal. ${ADVISOR_NOTICE}`, sources: [] };
+  }
+  const requestedBranches = branchNamesIn(query, cities);
   let names = namesIn(query, cities);
   let fields = requestedFields(query);
   if (!fields.contacts && !fields.offices && !fields.hours) {
     // Only a known city may inherit the previous question; "gracias" must not repeat the directory.
     if (hasOtherCommerceQuestion(query)) return null;
     const bare = normalize(query).replace(/[¿?!.]/g, "").replace(/^(?:y\s+)?(?:(?:el|la|los|las)\s+)?(?:de\s+)?/, "").trim();
-    const isBareKnownTarget = [...directCities.map((city) => city.name), ...names].some((name) => normalize(name) === bare)
+    const isBareKnownTarget = [...directCities.map((city) => city.name), ...names, ...requestedBranches].some((name) => normalize(name) === bare)
       || (directCities.length === 1 && /^[a-z]+$/.test(bare) && citiesIn(bare, cities).length === 1);
-    if (!isBareKnownTarget && !clearFollowup) return null;
-    if (!isBareKnownTarget && names.length === 0 && directCities.length === 0
+    const repeatedKnownTarget = repeatDirectoryRequest(query) && (directCities.length > 0 || requestedBranches.length > 0);
+    if (!isBareKnownTarget && !clearFollowup && !repeatedKnownTarget) return null;
+    if (!isBareKnownTarget && names.length === 0 && directCities.length === 0 && requestedBranches.length === 0
       && !/\b(?:alli|ahi|alla|aqui|ella|el|esa|ese|esta|este|su)\b/.test(normalize(query))) {
       return { content: `No encuentro ese contacto en la información publicada. ${ADVISOR_NOTICE}`, sources: [] };
     }
@@ -218,6 +259,10 @@ export function buildPublicDirectoryReply(history: Message[], chunks: KnowledgeC
     return { content: fields.contacts ? `No encuentro ese contacto en la información publicada. ${ADVISOR_NOTICE}` : `No encuentro datos publicados para esa sucursal. ${ADVISOR_NOTICE}`, sources: [] };
   }
   if (selected.length === 0 && /\b(?:todos|todas)\b/.test(normalize(query))) selected = cities;
+  if (selected.length === 0) {
+    const matchingBranchCities = cities.filter((city) => city.offices.some((office) => requestedBranches.includes(branchName(office, city))));
+    if (matchingBranchCities.length === 1) selected = matchingBranchCities;
+  }
   if (selected.length === 0) {
     // User-selected city/name takes priority over an assistant message listing several contacts.
     const previousMessages = [...previousHistory.filter((message) => message.role === "user").reverse(),
@@ -243,29 +288,33 @@ export function buildPublicDirectoryReply(history: Message[], chunks: KnowledgeC
     return { content: "Ese nombre aparece en más de una ciudad. ¿De qué ciudad necesitas el contacto?", sources: [] };
   }
   const sections: string[] = [];
+  const branchBlocks: string[] = [];
   for (const city of selected) {
-    const lines = [city.name];
+    const lines: string[] = [];
     if (fields.offices) {
-      for (const office of city.offices) {
-        lines.push(office.title);
-        if (office.address) lines.push(`Dirección: ${office.address}`);
-        if (office.map) lines.push(`Ubicación: ${office.map}`);
+      const offices = city.offices.filter((office) => requestedBranches.length === 0 || requestedBranches.includes(branchName(office, city)));
+      for (const office of offices) {
+        const block = [`📍 ${office.title}`, office.map ?? "No tengo un enlace de mapa publicado para esta sucursal.",
+          ...(office.address ? [`Dirección: ${office.address}`] : [])].join("\n");
+        lines.push(block);
+        branchBlocks.push(block);
       }
-      if (city.offices.length === 0) lines.push("No tengo una dirección publicada para esta sucursal.");
+      if (offices.length === 0) lines.push(`No tengo una dirección publicada para esa sucursal de ${city.name}.`);
     }
-    if (fields.hours) lines.push(...(city.hours.length ? city.hours : ["No tengo un horario publicado para esta sucursal."]));
+    if (fields.hours) lines.push(`${city.name}\n${(city.hours.length ? city.hours : ["No tengo un horario publicado para esta sucursal."]).join("\n")}`);
     if (fields.contacts) {
       const contacts = city.contacts.filter((contact) => names.length === 0 || names.includes(contact.name));
       const conflicting = contacts.some((contact) => !/^(?:telefono|contacto|celular)$/i.test(normalize(contact.name))
         && contacts.some((other) => normalize(other.name) === normalize(contact.name) && other.phone.replace(/\D/g, "") !== contact.phone.replace(/\D/g, "")));
-      if (conflicting) lines.push(`Hay datos de contacto distintos para el mismo asesor y necesito confirmarlos. ${ADVISOR_NOTICE}`);
-      else if (contacts.length) lines.push(...contacts.map((contact) => `${contact.name}: ${contact.phone}`));
-      else lines.push(`No tengo un número publicado para este contacto. ${ADVISOR_NOTICE}`);
+      if (conflicting) lines.push(`${city.name}\nHay datos de contacto distintos para el mismo asesor y necesito confirmarlos. ${ADVISOR_NOTICE}`);
+      else if (contacts.length) lines.push(`${city.name}\n${contacts.map((contact) => `${contact.name}: ${contact.phone}`).join("\n")}`);
+      else lines.push(`${city.name}\nNo tengo un número publicado para este contacto. ${ADVISOR_NOTICE}`);
     }
-    sections.push(lines.join("\n"));
+    sections.push(lines.join("\n\n"));
   }
-  const content = sections.join("\n\n");
+  const intro = fields.offices ? "Claro 😊, te comparto la información de nuestras sucursales:" : "Claro 😊, te comparto la información:";
+  const content = `${intro}\n\n${sections.join("\n\n")}`;
   // Keep only the facts selected for this answer as model-visible evidence.
   const sources: RetrievedSource[] = [{ id: "published-directory-selection", kind: "knowledge", label: "Contactos y sucursales publicados", content, score: 1 }];
-  return { content, sources };
+  return { content, sources, ...(branchBlocks.length ? { branchBlocks } : {}) };
 }

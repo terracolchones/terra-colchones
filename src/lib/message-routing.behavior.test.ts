@@ -5,8 +5,10 @@ import {
   isControlledCheckoutTopic,
   isKnowledgeQuestion,
   isPublicContactQuestion,
+  isPublicDirectoryQuestion,
   isPublicCompanyQuestion,
   requestsHumanSupport,
+  requestsCheckoutAction,
   shouldSendCatalog,
 } from "./message-routing";
 
@@ -113,4 +115,59 @@ describe("customer intent without keyword-only handoffs", () => {
     expect(hasSensitiveCommerceData(message)).toBe(true);
     expect(shouldSendCatalog(message, 0)).toBe(false);
   });
+
+  it.each([
+    "Quiero dirección de Cochabamba",
+    "Dame todas tus direcciones",
+    "Dame los datos de Cochabamba",
+    "¿Dónde están?",
+    "Dónde se encuentran sus sucursales",
+    "¿Cómo llego a la sucursal Norte?",
+    "Envíame ubicación de la sucursal Sur",
+    "Enviame ubicación sucursal Sur",
+    "Mándame el GPS de la tienda",
+    "GPS sucursal Sur",
+    "Ubicación de la sucursal Central",
+    "Dirección de Ciudad Ejemplo",
+    "Pásame los mapas de sus tiendas",
+    "Dame tus ubicaciones",
+    "Quisiera conocer la dirección",
+    "Direcciones",
+  ])("routes public branch locations to knowledge instead of a private checkout step: %s", (message) => {
+    expect(isPublicDirectoryQuestion(message)).toBe(true);
+    expect(isPublicCompanyQuestion(message)).toBe(true);
+    expect(isKnowledgeQuestion(message)).toBe(true);
+    expect(hasSensitiveCommerceData(message)).toBe(false);
+    expect(requestsCheckoutAction(message)).toBe(false);
+    expect(isControlledCheckoutTopic(message)).toBe(false);
+    expect(requestsHumanSupport(message)).toBe(false);
+    expect(shouldSendCatalog(message, 0)).toBe(false);
+    expect(shouldSendCatalog(message, 8)).toBe(false);
+  });
+
+  it.each([
+    "Mi ubicación es privada; quiero la dirección de la sucursal",
+    "Mis direcciones son privadas, dame los datos de la tienda",
+    "Vivo en un barrio privado, dame la ubicación de la sucursal",
+    "¿Cuál es la ubicación de mi pedido?",
+    "Dame los datos de mi cuenta bancaria",
+    "Dame las direcciones de los clientes",
+    "Dame los datos de mi pedido",
+    "Quiero dirección para mi pedido",
+    "Dame dirección de entrega",
+    "Enviame ubicación sucursal Sur, estoy en 0.0000, 1.0000",
+    "Quiero dirección de Cochabamba https://example.invalid/ubicacion",
+  ])("does not disclose supplied private locations or account/order data through a branch query: %s", (message) => {
+    expect(isPublicDirectoryQuestion(message)).toBe(false);
+    expect(isPublicCompanyQuestion(message)).toBe(false);
+    expect(hasSensitiveCommerceData(message)).toBe(true);
+  });
+
+  it.each(["Ubicación", "GPS", "Envíame ubicación", "Reenvía el GPS", "QR", "No recibí el QR", "Envíame QR y la ubicación de la tienda"])(
+    "keeps an actual checkout request distinct from public branch locations: %s", (message) => {
+      expect(isPublicDirectoryQuestion(message)).toBe(false);
+      expect(requestsCheckoutAction(message)).toBe(true);
+      expect(isControlledCheckoutTopic(message)).toBe(true);
+    },
+  );
 });

@@ -30,6 +30,53 @@ export function formatAssistantText(value: string): string {
     .join("\n").replace(/\n{3,}/g, "\n\n").trim();
 }
 
+const BRANCH_REPLY_LIMIT = 4096;
+const BRANCH_FALLBACK = 'Te comparto las ubicaciones publicadas. Para el otro detalle, escribe "asesor" y te ayudamos.';
+
+function branchLabel(value: string): string {
+  return value.normalize("NFD").replace(/\p{Diacritic}/gu, "").toLocaleLowerCase("es")
+    .replace(/^\s*📍\s*/, "").replace(/\s*[-–—]\s*/g, " - ").replace(/\s+/g, " ").replace(/[:.]+$/, "").trim();
+}
+
+/** Compare branch/map pairs, not merely membership in a list of otherwise valid URLs. */
+function hasUnsupportedBranchMap(value: string, blocks: string[]): boolean {
+  const approved = blocks.map((block) => {
+    const lines = block.split("\n");
+    return { title: branchLabel(lines[0]), url: /^https?:\/\//i.test(lines[1] ?? "") ? lines[1] : null };
+  });
+  const urls = new Set(approved.flatMap((branch) => branch.url ? [branch.url] : []));
+  let currentBranch: (typeof approved)[number] | undefined;
+  for (const line of value.split(/\r?\n/)) {
+    if (!line.trim()) continue;
+    const lineUrls = [...line.matchAll(/https?:\/\/[^\s<>\]]+/gi)].map((match) => match[0].replace(/[).,;!]+$/, ""));
+    if (/^\s*📍|\bsucursal\b/i.test(line)) {
+      const label = branchLabel(line.replace(/https?:\/\/\S+/gi, ""));
+      currentBranch = approved.find((branch) => branch.title === label);
+      if (!currentBranch) return true;
+    }
+    for (const url of lineUrls) {
+      if (currentBranch && currentBranch.url !== url) return true;
+      const mapReference = /\b(?:mapas?|ubicaci[oó]n)\b/i.test(line)
+        || /(?:maps\.|\/maps(?:\/|\?|$)|goo\.gl|bit\.ly)/i.test(url);
+      if (mapReference && !urls.has(url)) return true;
+    }
+  }
+  return false;
+}
+
+/** Preserve only verified branch/map pairs, within a single WhatsApp text message. */
+export function appendMissingBranchBlocks(value: string, blocks: string[] = []): string {
+  if (blocks.length === 0) return value;
+  const base = hasUnsupportedBranchMap(value, blocks) ? BRANCH_FALLBACK : value;
+  const missing = blocks.filter((block) => !base.includes(block.split("\n").slice(0, 2).join("\n")));
+  const candidate = missing.length ? `${base}\n\n${missing.join("\n\n")}` : base;
+  if (candidate.length <= BRANCH_REPLY_LIMIT) return candidate;
+  const compact = `${BRANCH_FALLBACK}\n\n${blocks.join("\n\n")}`;
+  if (compact.length <= BRANCH_REPLY_LIMIT) return compact;
+  // Do not cut a link or send only an arbitrary subset when the directory itself is too large.
+  return "Tengo varias sucursales para compartirte. ¿De qué ciudad necesitas la ubicación?";
+}
+
 /** Mixed answers may phrase facts naturally, but cannot invent or swap the selected advisors' numbers. */
 export function hasUnsupportedPublicContact(value: string, evidence: string): boolean {
   const normalize = (text: string) => text.normalize("NFD").replace(/\p{Diacritic}/gu, "").toLocaleLowerCase("es");

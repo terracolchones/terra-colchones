@@ -11,7 +11,7 @@ const fixture = vi.hoisted(() => ({
   channel: "synthetic-behavior-channel",
   mode: "AI" as "AI" | "HUMAN",
   processed: new Set<string>(),
-  messages: [] as Array<{ id: number; role: string; content: string; wa_message_id: string | null }>,
+  messages: [] as Array<{ id: number; role: string; content: string; wa_message_id: string | null; created_at?: number }>,
   db: {
     claimCatalogOrder: vi.fn(),
     createCatalogCheckoutSession: vi.fn(),
@@ -49,6 +49,7 @@ vi.mock("@/lib/catalog-payment-flow", () => ({ dispatchCatalogPaymentQr: fixture
 
 import { processWebhookPayload } from "@/lib/meta/handler";
 import { createAssistantResponder } from "@/lib/behavior/respond";
+import { buildPublicDirectoryReply } from "@/lib/rag/public-contacts";
 
 function conversation() {
   return { id: 1, phone: fixture.phone, name: "Synthetic customer", mode: fixture.mode, last_message_at: null, created_at: 0 };
@@ -101,7 +102,7 @@ beforeEach(() => {
   fixture.db.getRecentHistory.mockImplementation((_id: number, limit: number) => fixture.messages.slice(-limit));
   fixture.db.insertMessage.mockImplementation((_id: number, role: string, content: string, wamid?: string) => {
     const id = fixture.messages.length + 1;
-    fixture.messages.push({ id, role, content, wa_message_id: wamid ?? null });
+    fixture.messages.push({ id, role, content, wa_message_id: wamid ?? null, created_at: Math.floor(Date.now() / 1000) });
     return id;
   });
   fixture.db.wasMessageProcessed.mockImplementation((id: string) => fixture.processed.has(id));
@@ -131,6 +132,73 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
+describe("branch maps and conversational greetings at the real handler boundary", () => {
+  const knowledge = [{ id: "published-synthetic-maps-0", title: "Sucursales", content: [
+    "Sucursal 2 Sur - Ciudad Aurora", "Dirección: Avenida Sur Sintética.",
+    "Ubicación: https://maps.example.invalid/sur", "",
+    "Sucursal Central - Cochabamba", "Dirección: Calle de Prueba.",
+    "Ubicación: https://maps.example.invalid/cocha",
+  ].join("\n") }];
+  function usePublishedDirectory() {
+    const complete = vi.fn().mockRejectedValue(new Error("The directory must not call the model"));
+    fixture.generateAssistantReply.mockImplementation(createAssistantResponder({
+      getActiveBehavior: () => ({ id: 0, instructions: "Usa datos aprobados.", createdAt: "synthetic" }),
+      retrieve: async (history) => {
+        const directory = buildPublicDirectoryReply(history, knowledge);
+        return { sources: directory?.sources ?? [], context: directory?.content ?? "", directoryReply: directory?.content };
+      }, complete,
+    }));
+    return complete;
+  }
+  it.each([null, "awaiting_location", "awaiting_payment", "payment_proof_received"])(
+    "keeps all screenshot variants factual and out of checkout with state %s", async (status) => {
+      const activeOrder = status ? order(status) : null;
+      const before = structuredClone(activeOrder);
+      fixture.db.getLatestActiveCatalogOrderForConversation.mockReturnValue(activeOrder);
+      const complete = usePublishedDirectory();
+      const questions = ["Quiero dirección de Cochabamba", "Me puedes dar nuevamente de cocha", "Cocha",
+        "Dame los datos de Cochabamba", "Dame todas tus direcciones", "Envíame ubicación sucursal Sur"];
+      for (const [index, question] of questions.entries()) {
+        const event = payload(question, `synthetic-map-${index}`);
+        await processWebhookPayload(event);
+        await processWebhookPayload(event);
+        const reply = fixture.meta.sendTextMessage.mock.calls[index][1] as string;
+        expect(reply.startsWith("¡Hola! 👋")).toBe(index === 0);
+        if (index < 5) expect(reply).toContain("📍 Sucursal Central - Cochabamba\nhttps://maps.example.invalid/cocha");
+        if (index >= 4) expect(reply).toContain("📍 Sucursal 2 Sur - Ciudad Aurora\nhttps://maps.example.invalid/sur");
+        if (index === 5) expect(reply).not.toContain("Cochabamba");
+        expect(reply).not.toMatch(/omitido|\*|asesor (?:puede revisar|debe confirmar)|comprobante|QR/);
+      }
+      expect(fixture.meta.sendTextMessage).toHaveBeenCalledTimes(questions.length);
+      expect(complete).not.toHaveBeenCalled();
+      expect(fixture.meta.sendCatalogCtaMessage).not.toHaveBeenCalled();
+      expect(fixture.db.setMode).not.toHaveBeenCalled();
+      expect(activeOrder).toEqual(before);
+      expectNoCheckoutAction();
+    },
+  );
+  it("greets a resumed directory conversation once inside the same reply", async () => {
+    usePublishedDirectory();
+    fixture.messages.push({ id: 1, role: "assistant", content: "¿En qué te ayudo?", wa_message_id: "synthetic-old", created_at: Math.floor(Date.now() / 1000) - 1801 });
+    await processWebhookPayload(payload("Quiero dirección de Cochabamba"));
+    expect(fixture.meta.sendTextMessage).toHaveBeenCalledTimes(1);
+    expect(sentText()).toMatch(/^¡Hola! 👋\n\nClaro 😊,/);
+    expect(sentText()).toContain("https://maps.example.invalid/cocha");
+    expectNoCheckoutAction();
+  });
+  it("greets a resumed catalog request and stops the CTA if an operator takes over during the greeting", async () => {
+    fixture.messages.push({ id: 1, role: "assistant", content: "Catálogo enviado.", wa_message_id: "synthetic-old", created_at: Math.floor(Date.now() / 1000) - 1801 });
+    fixture.meta.sendTextMessage.mockImplementationOnce(async () => {
+      fixture.mode = "HUMAN";
+      return { wa_message_id: "synthetic-greeting" };
+    });
+    await processWebhookPayload(payload("catálogo"));
+    expect(fixture.meta.sendTextMessage).toHaveBeenCalledExactlyOnceWith(fixture.phone, "¡Hola! 👋 Te comparto el catálogo de Terra.");
+    expect(fixture.meta.sendCatalogCtaMessage).not.toHaveBeenCalled();
+    expectNoCheckoutAction();
+  });
+});
+
 describe("explicit advisor access without false handoffs", () => {
   it("preserves literal asesor and acknowledges it once even with replay and another request", async () => {
     const event = payload("asesor");
@@ -140,7 +208,7 @@ describe("explicit advisor access without false handoffs", () => {
 
     expect(fixture.db.setMode).toHaveBeenCalledExactlyOnceWith(1, "HUMAN");
     expect(fixture.meta.sendTextMessage).toHaveBeenCalledExactlyOnceWith(
-      fixture.phone, "Perfecto, te conecto con un asesor comercial para ayudarte a avanzar.",
+      fixture.phone, "¡Hola! 👋\n\nPerfecto, te conecto con un asesor comercial para ayudarte a avanzar.",
     );
     expect(fixture.meta.sendCatalogCtaMessage).not.toHaveBeenCalled();
     expect(fixture.generateAssistantReply).not.toHaveBeenCalled();
@@ -247,7 +315,7 @@ describe("a confirmed order supplies context without forcing every message into 
 
     expect(fixture.generateAssistantReply).toHaveBeenCalledTimes(1);
     // Equality ensures no unconditional GPS/payment reminder is appended after generation.
-    expect(fixture.meta.sendTextMessage).toHaveBeenCalledExactlyOnceWith(fixture.phone, "Respuesta aprobada de prueba.");
+    expect(fixture.meta.sendTextMessage).toHaveBeenCalledExactlyOnceWith(fixture.phone, "¡Hola! 👋\n\nRespuesta aprobada de prueba.");
     expect(fixture.meta.sendCatalogCtaMessage).not.toHaveBeenCalled();
     expect(fixture.db.setMode).not.toHaveBeenCalled();
     expect(activeOrder).toEqual(before);
@@ -273,7 +341,7 @@ describe("a confirmed order supplies context without forcing every message into 
     await processWebhookPayload(payload("Está caro"));
 
     expect(fixture.generateAssistantReply).toHaveBeenCalledTimes(1);
-    expect(fixture.meta.sendTextMessage).toHaveBeenCalledExactlyOnceWith(fixture.phone, "Entiendo. ¿Qué presupuesto tienes pensado?");
+    expect(fixture.meta.sendTextMessage).toHaveBeenCalledExactlyOnceWith(fixture.phone, "¡Hola! 👋\n\nEntiendo. ¿Qué presupuesto tienes pensado?");
     expectNoCheckoutAction();
   });
 
@@ -295,7 +363,7 @@ describe("a confirmed order supplies context without forcing every message into 
     await processWebhookPayload(payload("No me llegó la factura"));
 
     expect(fixture.generateAssistantReply).toHaveBeenCalledTimes(1);
-    expect(fixture.meta.sendTextMessage).toHaveBeenCalledExactlyOnceWith(fixture.phone, "Respuesta aprobada de prueba.");
+    expect(fixture.meta.sendTextMessage).toHaveBeenCalledExactlyOnceWith(fixture.phone, "¡Hola! 👋\n\nRespuesta aprobada de prueba.");
     expectNoCheckoutAction();
   });
 
@@ -378,7 +446,7 @@ describe("a confirmed order supplies context without forcing every message into 
     await processWebhookPayload(payload("¿Cuál es su dirección?"));
 
     expect(fixture.generateAssistantReply).toHaveBeenCalledTimes(1);
-    expect(fixture.meta.sendTextMessage).toHaveBeenCalledExactlyOnceWith(fixture.phone, "Respuesta aprobada de prueba.");
+    expect(fixture.meta.sendTextMessage).toHaveBeenCalledExactlyOnceWith(fixture.phone, "¡Hola! 👋\n\nRespuesta aprobada de prueba.");
     expect(fixture.meta.sendCatalogCtaMessage).not.toHaveBeenCalled();
     expectNoCheckoutAction();
   });
@@ -399,7 +467,7 @@ describe("a confirmed order supplies context without forcing every message into 
     await processWebhookPayload(event);
 
     expect(fixture.generateAssistantReply).toHaveBeenCalledTimes(1);
-    expect(fixture.meta.sendTextMessage).toHaveBeenCalledExactlyOnceWith(fixture.phone, "Respuesta aprobada de prueba.");
+    expect(fixture.meta.sendTextMessage).toHaveBeenCalledExactlyOnceWith(fixture.phone, "¡Hola! 👋\n\nRespuesta aprobada de prueba.");
     expect(fixture.meta.sendCatalogCtaMessage).not.toHaveBeenCalled();
     expect(fixture.db.setMode).not.toHaveBeenCalled();
     expect(activeOrder).toEqual(before);
@@ -451,7 +519,7 @@ describe("intent edge cases preserve consent and access to knowledge", () => {
         expect.objectContaining({ role: "user", content }),
       ]));
       expect(fixture.meta.sendTextMessage).toHaveBeenCalledExactlyOnceWith(
-        fixture.phone, "Claro, tómate tu tiempo. Aquí estoy si te surge alguna duda.",
+        fixture.phone, "¡Hola! 👋\n\nClaro, tómate tu tiempo. Aquí estoy si te surge alguna duda.",
       );
       expect(fixture.meta.sendCatalogCtaMessage).not.toHaveBeenCalled();
       expectNoCheckoutAction();
@@ -472,7 +540,7 @@ describe("intent edge cases preserve consent and access to knowledge", () => {
     await processWebhookPayload(payload("No recibí el QR, quiero hablar con un asesor"));
     expect(fixture.db.setMode).toHaveBeenCalledExactlyOnceWith(1, "HUMAN");
     expect(fixture.meta.sendTextMessage).toHaveBeenCalledExactlyOnceWith(
-      fixture.phone, "Perfecto, te conecto con un asesor comercial para ayudarte a avanzar.",
+      fixture.phone, "¡Hola! 👋\n\nPerfecto, te conecto con un asesor comercial para ayudarte a avanzar.",
     );
     expect(fixture.generateAssistantReply).not.toHaveBeenCalled();
     expectNoCheckoutAction();
@@ -484,7 +552,7 @@ describe("intent edge cases preserve consent and access to knowledge", () => {
     });
     await processWebhookPayload(payload("Necesito algo más económico"));
     expect(fixture.generateAssistantReply).toHaveBeenCalledTimes(1);
-    expect(fixture.meta.sendTextMessage).toHaveBeenCalledExactlyOnceWith(fixture.phone, "Claro. ¿Qué presupuesto tienes pensado?");
+    expect(fixture.meta.sendTextMessage).toHaveBeenCalledExactlyOnceWith(fixture.phone, "¡Hola! 👋\n\nClaro. ¿Qué presupuesto tienes pensado?");
     expect(fixture.meta.sendCatalogCtaMessage).not.toHaveBeenCalled();
     expectNoCheckoutAction();
   });
@@ -505,7 +573,7 @@ describe("intent edge cases preserve consent and access to knowledge", () => {
     expect(retrieve).toHaveBeenCalledTimes(1);
     expect(complete).toHaveBeenCalledTimes(1);
     expect(complete.mock.calls[0][0].instructions).toContain(approved);
-    expect(fixture.meta.sendTextMessage).toHaveBeenCalledExactlyOnceWith(fixture.phone, "Sí, aceptamos tarjeta de débito.");
+    expect(fixture.meta.sendTextMessage).toHaveBeenCalledExactlyOnceWith(fixture.phone, "¡Hola! 👋\n\nSí, aceptamos tarjeta de débito.");
     expect(fixture.db.setMode).not.toHaveBeenCalled();
     expectNoCheckoutAction();
   });

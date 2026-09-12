@@ -275,7 +275,7 @@ describe("offline handler characterization (no real database or provider)", () =
     expect(fixture.mode).toBe("HUMAN");
     expect(fixture.db.setMode).toHaveBeenCalledExactlyOnceWith(1, "HUMAN");
     expect(fixture.meta.sendTextMessage).toHaveBeenCalledExactlyOnceWith(
-      fixture.phone, "Perfecto, te conecto con un asesor comercial para ayudarte a avanzar.",
+      fixture.phone, "¡Hola! 👋\n\nPerfecto, te conecto con un asesor comercial para ayudarte a avanzar.",
     );
     expect(fixture.meta.sendCatalogCtaMessage).not.toHaveBeenCalled();
     expect(fixture.generateAssistantReply).not.toHaveBeenCalled();
@@ -520,7 +520,7 @@ describe("D1-D5 safety regressions", () => {
     fixture.db.updateMessageWaId.mockImplementationOnce(() => { throw new Error("synthetic persistence failure"); });
     await processWebhookPayload(payload(textMessage("synthetic-rag-store-fail", "¿Cuáles son los horarios?")));
     expect(fixture.generateAssistantReply).toHaveBeenCalledTimes(1);
-    expect(fixture.meta.sendTextMessage).toHaveBeenCalledExactlyOnceWith(fixture.phone, "Respuesta pública simulada.");
+    expect(fixture.meta.sendTextMessage).toHaveBeenCalledExactlyOnceWith(fixture.phone, "¡Hola! 👋\n\nRespuesta pública simulada.");
     expect(fixture.db.updateMessageWaId).toHaveBeenCalledTimes(1);
   });
 
@@ -528,7 +528,7 @@ describe("D1-D5 safety regressions", () => {
     fixture.meta.sendTextMessage.mockRejectedValueOnce(new Error("synthetic uncertain transport result"));
     await processWebhookPayload(payload(textMessage("synthetic-rag-send-fail", "¿Cuáles son los horarios?")));
     expect(fixture.generateAssistantReply).toHaveBeenCalledTimes(1);
-    expect(fixture.meta.sendTextMessage).toHaveBeenCalledExactlyOnceWith(fixture.phone, "Respuesta pública simulada.");
+    expect(fixture.meta.sendTextMessage).toHaveBeenCalledExactlyOnceWith(fixture.phone, "¡Hola! 👋\n\nRespuesta pública simulada.");
     expect(fixture.db.updateMessageWaId).not.toHaveBeenCalled();
   });
 
@@ -626,7 +626,7 @@ describe("D1-D5 safety regressions", () => {
     expect(serialized).not.toContain(privateMarker);
     expect(console.error).not.toHaveBeenCalled();
     expect(fixture.meta.sendTextMessage).toHaveBeenCalledExactlyOnceWith(
-      fixture.phone, 'No pudimos consultar esa información ahora. Si quieres hablar con un asesor, escribe "asesor".',
+      fixture.phone, '¡Hola! 👋\n\nNo pudimos consultar esa información ahora. Si quieres hablar con un asesor, escribe "asesor".',
     );
   });
 });
@@ -637,7 +637,7 @@ describe("preserved AI-mode commerce behavior", () => {
     await processWebhookPayload(payload({ id: "synthetic-ai-image", from: fixture.phone, type: "image", image: { id: "synthetic-media" } }));
     expect(fixture.db.markCatalogOrderPaymentProof).toHaveBeenCalledExactlyOnceWith("synthetic-order-alpha");
     expect(fixture.meta.sendTextMessage).toHaveBeenCalledExactlyOnceWith(
-      fixture.phone, "✅ Recibimos el comprobante del pedido #T-TEST-DEMO. Está en revisión; el pago no se aprueba automáticamente.",
+      fixture.phone, "¡Hola! 👋\n\n✅ Recibimos el comprobante del pedido #T-TEST-DEMO. Está en revisión; el pago no se aprueba automáticamente.",
     );
     expect(fixture.mode).toBe("AI");
   });

@@ -30,6 +30,27 @@ beforeEach(() => {
 });
 
 describe("published knowledge as a secondary source", () => {
+  it("does not fall back to old indexed maps on a bare city continuation when fresh publication is unavailable", async () => {
+    mocks.published.mockResolvedValue({ data: null, error: { message: "synthetic failure" } });
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const { buildRagContext } = await import("./service");
+    const result = await buildRagContext([{ ...history[0], content: "Quiero dirección de Ciudad Aurora" },
+      { ...history[0], role: "assistant", content: "📍 Sucursal Central - Ciudad Aurora\n[enlace omitido]" },
+      { ...history[0], content: "Cocha" }]);
+    expect(result.directoryReply).toContain("No pude consultar");
+    expect(mocks.rpc).not.toHaveBeenCalled();
+    expect(mocks.readFile).not.toHaveBeenCalled();
+  });
+  it("retains selected current branch-map blocks for mixed questions while preserving payment policy", async () => {
+    const content = "Sucursal Central - Ciudad Prueba\n- Dirección: Avenida Sintética.\n- Ubicación: https://bit.ly/synthetic-current-map\n\nFormas de pago\nSe aceptan pagos en efectivo o por QR.";
+    mocks.published.mockResolvedValue({ data: [{ id: "synthetic-branches-v2", status: "published", content }], error: null });
+    mocks.rpc.mockResolvedValue({ data: [{ ...indexedResponse.data[0], content: content.replace("synthetic-current-map", "synthetic-old-map") }], error: null });
+    const { buildRagContext } = await import("./service");
+    const result = await buildRagContext([{ ...history[0], content: "Dame la dirección de Ciudad Prueba y formas de pago" }]);
+    expect(result.requiredBranchBlocks).toEqual(["📍 Sucursal Central - Ciudad Prueba\nhttps://bit.ly/synthetic-current-map\nDirección: Avenida Sintética."]);
+    expect(result.context).not.toContain("synthetic-old-map");
+    expect(result.context).toContain("Se aceptan pagos en efectivo o por QR.");
+  });
   it("reads current complete contact versions without consulting the stale index or local file", async () => {
     mocks.published.mockResolvedValue({ data: [{ id: "synthetic-contacts-v2", status: "published", content: "Pedidos e información - Ciudad Prueba\n- Asesor Uno: 70000001" }], error: null });
     mocks.rpc.mockResolvedValue({ data: [{ ...indexedResponse.data[0], content: "Pedidos e información - Ciudad Prueba\n- Asesor Uno: 79999999" }], error: null });

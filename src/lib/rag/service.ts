@@ -33,6 +33,7 @@ export interface RagContext {
   sources: RetrievedSource[];
   directoryReply?: string;
   contactEvidence?: string;
+  requiredBranchBlocks?: string[];
 }
 
 interface IndexedChunk {
@@ -181,9 +182,11 @@ export async function buildRagContext(
       ...source,
       // The same approved document may also contain payment/shipping policies.
       // Remove indexed phone fields while retaining that independently useful evidence.
-      content: source.content.split(/\r?\n/).filter((line) => !/^\s*[-*•]?\s*[\p{L}][\p{L} .'-]{0,59}:\s*\+?\d[\d ().-]{6,}/u.test(line)).join("\n").trim(),
+      content: source.content.split(/\r?\n/).filter((line) => !/^\s*[-*•]?\s*[\p{L}][\p{L} .'-]{0,59}:\s*\+?\d[\d ().-]{6,}/u.test(line)
+        && !(mixedDirectory?.branchBlocks?.length && /^\s*[-*•]?\s*(?:ubicaci[oó]n|mapa):/i.test(line))).join("\n").trim(),
     }).filter((source) => source.content), ...mixedDirectory.sources] : input;
-    return { context: formatRetrievedSources(sources), sources, ...(mixedDirectory ? { contactEvidence: mixedDirectory.content } : {}) };
+    return { context: formatRetrievedSources(sources), sources, ...(mixedDirectory ? { contactEvidence: mixedDirectory.content,
+      ...(mixedDirectory.branchBlocks?.length ? { requiredBranchBlocks: mixedDirectory.branchBlocks } : {}) } : {}) };
   };
 
   const [knowledge, indexed] = await Promise.all([loadKnowledge(), searchIndexedKnowledge(query)]);

@@ -4,7 +4,7 @@ import { requiresHumanHandoffForQuery } from "@/lib/rag/policy";
 import type { RagContext } from "@/lib/rag/service";
 import { composeInstructions, type ReplyContext } from "./instructions";
 import { sanitizeHistory } from "./privacy";
-import { containsInternalPlaceholder, formatAssistantText, hasUnsupportedPublicContact } from "./output-format";
+import { appendMissingBranchBlocks, containsInternalPlaceholder, formatAssistantText, hasUnsupportedPublicContact } from "./output-format";
 import type { BehaviorVersion } from "./types";
 
 export interface AssistantReply { content: string; needsAdvisorConfirmation: boolean; }
@@ -27,6 +27,12 @@ export function createAssistantResponder(deps: ResponderDependencies) {
     let rag: RagContext = { context: "", sources: [] };
     try { rag = await deps.retrieve(safeHistory, selectedLead); }
     catch { deps.onRetrievalFailure?.(); }
+    const advisorFallback = (): AssistantReply => ({
+      content: appendMissingBranchBlocks(ADVISOR_CONFIRMATION_REPLY, rag.requiredBranchBlocks),
+      // The factual map block should survive the handler's generic-advisor substitution.
+      // This flag controls copy only; explicit HUMAN routing still belongs to the handler.
+      needsAdvisorConfirmation: !rag.requiredBranchBlocks?.length,
+    });
     if (rag.directoryReply) {
       const content = formatAssistantText(rag.directoryReply);
       if (!content || containsInternalPlaceholder(content)) return { content: ADVISOR_CONFIRMATION_REPLY, needsAdvisorConfirmation: true };
@@ -34,7 +40,7 @@ export function createAssistantResponder(deps: ResponderDependencies) {
     }
     const query = [...safeHistory].reverse().find((message) => message.role === "user")?.content;
     if (query && requiresHumanHandoffForQuery(query, rag.sources)) {
-      return { content: ADVISOR_CONFIRMATION_REPLY, needsAdvisorConfirmation: true };
+      return advisorFallback();
     }
     const rawContent = (await deps.complete({
       instructions: composeInstructions(active.instructions, rag.context, context), history: safeHistory,
@@ -43,10 +49,11 @@ export function createAssistantResponder(deps: ResponderDependencies) {
       throw new Error("Respuesta del modelo no utilizable");
     }
     const content = formatAssistantText(rawContent);
-    if (!content || containsInternalPlaceholder(content)) return { content: ADVISOR_CONFIRMATION_REPLY, needsAdvisorConfirmation: true };
+    if (!content || containsInternalPlaceholder(content)) return advisorFallback();
     if (rag.contactEvidence !== undefined && hasUnsupportedPublicContact(content, rag.contactEvidence)) {
-      return { content: ADVISOR_CONFIRMATION_REPLY, needsAdvisorConfirmation: true };
+      return advisorFallback();
     }
-    return { content, needsAdvisorConfirmation: isHumanHandoffReply(content) };
+    if (rag.requiredBranchBlocks?.length && isHumanHandoffReply(content)) return advisorFallback();
+    return { content: appendMissingBranchBlocks(content, rag.requiredBranchBlocks), needsAdvisorConfirmation: isHumanHandoffReply(content) };
   };
 }

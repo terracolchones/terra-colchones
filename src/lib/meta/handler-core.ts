@@ -3,6 +3,7 @@ import type { MessageKind, MessageStatus } from "@/lib/meta/diagnostics";
 import { HUMAN_HANDOFF_REPLY } from "@/lib/handoff";
 import { containsUnsafeCheckoutReply, hasSensitiveCommerceData, isControlledCheckoutTopic, isKnowledgeQuestion, requestsGeneralInformation, requestsHumanSupport, shouldSendCatalog, isIdentityQuestion, declinesHumanSupport, isAcknowledgment, requestsOrderChange, isCatalogRequest, requestsCheckoutAction, isOrderConfirmationRequest } from "@/lib/message-routing";
 import { ADVISOR_NOTICE } from "@/lib/behavior/instructions";
+import { shouldGreetForReply, withConversationGreeting } from "@/lib/behavior/greeting";
 import { parseOrderConfirmationCode } from "@/lib/order-code";
 
 /** Provider and storage boundaries are injected so the exact flow can run offline. */
@@ -108,8 +109,9 @@ export function createWebhookProcessor(dependencies: WebhookDependencies): Webho
       diagnostic({ event: "message.mode_suppressed", kind: "text" });
       return;
     }
-    const id = insertMessage(conversation.id, "assistant", content);
-    const { wa_message_id } = await sendTextMessage(phone, content);
+    const displayContent = withConversationGreeting(content, getRecentHistory(conversation.id, 20));
+    const id = insertMessage(conversation.id, "assistant", displayContent);
+    const { wa_message_id } = await sendTextMessage(phone, displayContent);
     try {
       updateMessageWaId(id, wa_message_id);
     } catch {
@@ -141,6 +143,10 @@ export function createWebhookProcessor(dependencies: WebhookDependencies): Webho
       return;
     }
 
+    if (shouldGreetForReply(getRecentHistory(conversation.id, 20))) {
+      await sendAndStore(conversation, phone, "¡Hola! 👋 Te comparto el catálogo de Terra.");
+      if (!canAutomate(conversation)) return;
+    }
     let checkoutUrl = catalogUrl;
     try {
       const checkoutToken = createCatalogCheckoutSession(conversation.id);
@@ -243,7 +249,7 @@ export function createWebhookProcessor(dependencies: WebhookDependencies): Webho
       return;
     }
     if (isAcknowledgment(content)) {
-      await sendAndStore(conversation, phone, "¡Con gusto! Aquí estoy si necesitas algo más.");
+      await sendAndStore(conversation, phone, "¡Con gusto! 😊 Aquí estoy si necesitas algo más.");
       return;
     }
 

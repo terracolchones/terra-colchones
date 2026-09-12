@@ -92,6 +92,8 @@ export function isCheckoutInformationQuestion(content: string): boolean {
 
 export function requestsCheckoutAction(content: string): boolean {
   const value = normalize(content);
+  // Una ubicación pública de la tienda se responde con su fuente, sin reactivar el GPS del pedido.
+  if (isPublicDirectoryQuestion(content)) return false;
   return /^(?:ubicacion|gps|qr|comprobante|pago)[!.\s]*$/.test(value)
     || /\b(?:ya pague|ya hice (?:el pago|la transferencia)|ya envie (?:el )?comprobante)\b/.test(value)
     || (/\b(?:no (?:me )?(?:llego|recibi|veo)|reenviar|reenvia|enviame|mandame)\b/.test(value)
@@ -99,13 +101,22 @@ export function requestsCheckoutAction(content: string): boolean {
 }
 
 function hasConcreteContactData(content: string): boolean {
-  return /(?:\d[\s().-]*){7,}|https?:\/\/\S+|[\w.+-]+@[\w.-]+\.[a-z]{2,}/i.test(content);
+  return /(?:\d[\s().-]*){7,}|https?:\/\/\S+|[\w.+-]+@[\w.-]+\.[a-z]{2,}|-?\d{1,3}\.\d{3,}\s*[,;]\s*-?\d{1,3}\.\d{3,}/i.test(content);
 }
 
 function mentionsPrivateCommerceData(value: string): boolean {
-  return /\b(?:mi|mis)\s+(?:(?:nuevo|nueva|nuevos|nuevas)\s+)?(?:numeros?|telefonos?|celular(?:es)?|contactos?|tarjetas?|direccion|ubicacion|cuenta(?:\s+bancaria)?|datos?\s+bancarios?)\b/.test(value)
+  return /\b(?:mi|mis)\s+(?:(?:nuevo|nueva|nuevos|nuevas)\s+)?(?:numeros?|telefonos?|celular(?:es)?|contactos?|tarjetas?|direccion(?:es)?|ubicacion(?:es)?|domicilios?|coordenadas?|gps|cuenta(?:\s+bancaria)?|datos?\s+bancarios?)\b/.test(value)
     || /\b(?:numeros?|codigos?)\s+(?:(?:de|del)\s+)?(?:(?:mi|mis|tu|tus|la|el|un|una)\s+)?(?:tarjeta|cuenta|pedido|comprobante|transferencia|deposito|documento|identidad|carnet|cedula|casa)\b/.test(value)
+    || /\b(?:datos?|direccion(?:es)?|ubicacion(?:es)?|coordenadas?|gps)\s+(?:de|del|para)\s+(?:(?:mi|mis|tu|tus|el|la|los|las|un|una)\s+)?(?:pedido|compra|pago|comprobante|cuenta|tarjeta|cliente|clientes|casa|domicilio)\b/.test(value)
+    || /\b(?:direccion(?:es)?|ubicacion(?:es)?|coordenadas?|gps)\s+(?:de|del)\s+(?:(?:la|el|mi)\s+)?(?:entrega|envio)\b/.test(value)
+    || /\b(?:vivo|resido)\s+en\b/.test(value)
     || /\b(?:cvv|pin|datos?\s+bancarios?|cuenta\s+bancaria)\b/.test(value);
+}
+
+function hasExplicitPaymentAction(value: string): boolean {
+  return /\b(?:ya pague|ya hice (?:el pago|la transferencia)|ya envie (?:el )?comprobante)\b/.test(value)
+    || /\b(?:enviame|mandame|reenvia|reenviar|dame)\s+(?:(?:el|un|mi)\s+)?(?:qr|comprobante|pago)\b/.test(value)
+    || /\bno (?:me )?(?:llego|recibi|veo)\s+(?:(?:el|mi)\s+)?(?:qr|comprobante|pago)\b/.test(value);
 }
 
 /** Solicita un contacto comercial; los nombres y teléfonos deben validarse en fuentes publicadas. */
@@ -119,11 +130,35 @@ export function isPublicContactQuestion(content: string): boolean {
     || /^(?:(?:y|el|la|los|las|su|sus|un|una)\s+)*(?:numeros?|telefonos?|celular(?:es)?|contactos?|whatsapp)\b/.test(value);
 }
 
+/** Consultas sobre sucursales y sus datos públicos, sin depender del nombre de una ciudad. */
+export function isPublicDirectoryQuestion(content: string): boolean {
+  const value = normalize(content);
+  if (hasConcreteContactData(content) || mentionsPrivateCommerceData(value) || hasExplicitPaymentAction(value)) return false;
+  if (isPublicContactQuestion(content)) return true;
+  const branch = /\b(?:sucursal(?:es)?|oficina(?:s)?|tienda(?:s)?|local(?:es)?|sede(?:s)?)\b/.test(value);
+  const location = /\b(?:direccion(?:es)?|ubicacion(?:es)?|mapas?|gps|coordenadas?)\b/.test(value);
+  const hours = /\bhorarios?\b/.test(value);
+  const companyReference = /\b(?:su|sus|tu|tus|vuestra|vuestras|de terra|de la tienda|del local)\b/.test(value);
+  const locationTarget = /\b(?:direccion(?:es)?|ubicacion(?:es)?|mapas?|gps|coordenadas?|datos?)\s+(?:de|del|en|para)\s+\p{L}/u.test(value);
+  const request = /[¿?]/.test(content)
+    || /\b(?:dame|pasame|enviame|mandame|comparteme|muestrame|quiero|quisiera|necesito|cual(?:es)?|donde|como|saber|informacion|me das|me da|me pueden dar)\b/.test(value);
+  const allLocations = /\b(?:direcciones|ubicaciones|mapas|sucursales|oficinas|sedes)\b/.test(value);
+  const askingWhere = /\b(?:donde (?:estan|se encuentran|quedan)|como (?:llego|llegar))\b/.test(value);
+  const directoryDetails = /\bdatos?\b/.test(value) && (branch || companyReference || locationTarget);
+  const locationLabel = /^(?:(?:y|el|la|los|las|su|sus|tu|tus)\s+)*(?:direccion(?:es)?|ubicacion(?:es)?|mapas?|gps|coordenadas?)\b/.test(value);
+  if (askingWhere && !/\b(?:pedido|compra|pago|producto|productos)\b/.test(value)) return true;
+  if (directoryDetails && request) return true;
+  if (/\bdireccion(?:es)?\b/.test(value) && request) return true;
+  if (location && (branch || companyReference || locationTarget || allLocations) && (request || locationLabel)) return true;
+  if ((branch || hours) && request) return true;
+  return /^(?:(?:y|el|la|los|las|su|sus|tus|todas|todos)\s+)*(?:direcciones|ubicaciones|mapas?|sucursal(?:es)?|oficinas?|horarios?)(?:\s+(?:de|del|en)\s+\p{L}.*)?[.!\s]*$/u.test(value);
+}
+
 /** Información pública de Terra que puede responder el RAG, aun con un pedido activo. */
 export function isPublicCompanyQuestion(content: string): boolean {
   const normalized = normalize(content);
-  if (mentionsPrivateCommerceData(normalized)) return false;
-  if (isPublicContactQuestion(content)) return true;
+  if (hasConcreteContactData(content) || mentionsPrivateCommerceData(normalized) || hasExplicitPaymentAction(normalized)) return false;
+  if (isPublicDirectoryQuestion(content)) return true;
   if (/\b(?:su|sus|vuestra|de terra|de la tienda|del local)\b/.test(normalized)
     && /\b(?:direccion|ubicacion)\b/.test(normalized)
     && isCheckoutInformationQuestion(content)) return true;

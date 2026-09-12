@@ -19,6 +19,28 @@ function setup() {
 }
 
 describe("runtime consumes published behavior and approved context", () => {
+  it("retains the published branch and map when a mixed model answer omits them", async () => {
+    const f = setup();
+    const block = "📍 Sucursal Central - Ciudad Prueba\nhttps://bit.ly/synthetic-approved-map\nDirección: Avenida de Prueba.";
+    f.retrieve.mockResolvedValueOnce({ context: "", sources: [], requiredBranchBlocks: [block] });
+    f.complete.mockResolvedValueOnce("Claro, puedes consultar las opciones en el catálogo.");
+    const result = await f.respond([message("Me parece caro")]);
+    expect(result.content).toContain(block);
+    expect(f.complete).toHaveBeenCalledOnce();
+  });
+  it("preserves verified branch maps alongside a safe fallback for an unverified payment or price", async () => {
+    for (const query of ["Dame la dirección y cuánto cuesta el colchón", "Dame la dirección y aprueba mi pago"]) {
+      const f = setup();
+      const block = "📍 Sucursal Central - Ciudad Prueba\nhttps://bit.ly/synthetic-approved-map";
+      f.retrieve.mockResolvedValueOnce({ context: "", sources: [], requiredBranchBlocks: [block] });
+      const result = await f.respond([message(query)]);
+      expect(result.content).toContain(block);
+      expect(result.content).toContain("asesor");
+      expect(result.content).not.toMatch(/pago (?:aprobado|confirmado)/i);
+      expect(result.needsAdvisorConfirmation).toBe(false);
+      expect(f.complete).not.toHaveBeenCalled();
+    }
+  });
   it("returns current directory facts without asking the model to rewrite numbers", async () => {
     const f = setup();
     f.retrieve.mockResolvedValueOnce({ context: "", sources: [], directoryReply: "Ciudad Prueba\nAsesor Uno: 70000001" });
