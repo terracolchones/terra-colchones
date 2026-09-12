@@ -166,7 +166,7 @@ describe("offline handler characterization (no real database or provider)", () =
     expect(sequence).toEqual(["text-started", "text-accepted", "cta-started"]);
     expect(fixture.meta.sendTextMessage).toHaveBeenCalledExactlyOnceWith(
       fixture.phone,
-      "¡Hola! 👋 Bienvenido a Terra. Explora nuestro catálogo y elige el producto que buscas. Si prefieres atención humana, escribe \"asesor\".",
+      "¡Hola! 👋 Bienvenido a Terra. Explora nuestro catálogo y elige el producto que buscas. Si quieres hablar con un asesor, escribe \"asesor\".",
     );
     expect(fixture.meta.sendCatalogCtaMessage).toHaveBeenCalledExactlyOnceWith(
       fixture.phone, "https://catalog.invalid/?checkout=synthetic-checkout-token",
@@ -626,7 +626,7 @@ describe("D1-D5 safety regressions", () => {
     expect(serialized).not.toContain(privateMarker);
     expect(console.error).not.toHaveBeenCalled();
     expect(fixture.meta.sendTextMessage).toHaveBeenCalledExactlyOnceWith(
-      fixture.phone, 'No pudimos consultar esa información ahora. Si prefieres atención humana, escribe "asesor".',
+      fixture.phone, 'No pudimos consultar esa información ahora. Si quieres hablar con un asesor, escribe "asesor".',
     );
   });
 });

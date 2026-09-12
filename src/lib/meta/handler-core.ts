@@ -410,7 +410,7 @@ export function createWebhookProcessor(dependencies: WebhookDependencies): Webho
         await sendAndStore(
           conversation,
           phone,
-          "¡Hola! 👋 Bienvenido a Terra. Explora nuestro catálogo y elige el producto que buscas. Si prefieres atención humana, escribe \"asesor\".",
+          `¡Hola! 👋 Bienvenido a Terra. Explora nuestro catálogo y elige el producto que buscas. ${ADVISOR_NOTICE}`,
         );
       }
       await sendCatalog(conversation, phone, origin);

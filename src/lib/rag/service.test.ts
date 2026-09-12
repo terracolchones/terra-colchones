@@ -30,6 +30,49 @@ beforeEach(() => {
 });
 
 describe("published knowledge as a secondary source", () => {
+  it("reads current complete contact versions without consulting the stale index or local file", async () => {
+    mocks.published.mockResolvedValue({ data: [{ id: "synthetic-contacts-v2", status: "published", content: "Pedidos e información - Ciudad Prueba\n- Asesor Uno: 70000001" }], error: null });
+    mocks.rpc.mockResolvedValue({ data: [{ ...indexedResponse.data[0], content: "Pedidos e información - Ciudad Prueba\n- Asesor Uno: 79999999" }], error: null });
+    const { buildRagContext } = await import("./service");
+    const result = await buildRagContext([{ ...history[0], content: "Dame los teléfonos de Ciudad Prueba" }]);
+    expect(result.directoryReply).toContain("Asesor Uno: 70000001");
+    expect(result.context).not.toContain("79999999");
+    expect(mocks.rpc).not.toHaveBeenCalled();
+    expect(mocks.readFile).not.toHaveBeenCalled();
+  });
+  it("does not fall back to the old index after a contact followup loses published evidence", async () => {
+    mocks.published.mockResolvedValue({ data: null, error: { message: "synthetic failure" } });
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const { buildRagContext } = await import("./service");
+    const result = await buildRagContext([{ ...history[0], content: "Dame los teléfonos de Ciudad Prueba" }, { ...history[0], content: "¿Y el de Asesor Uno?" }]);
+    expect(result.directoryReply).toContain("No tengo un contacto publicado");
+    expect(mocks.rpc).not.toHaveBeenCalled();
+  });
+  it("keeps product retrieval for mixed questions and replaces stale contact evidence with selected current facts", async () => {
+    mocks.published.mockResolvedValue({ data: [{ id: "synthetic-contacts-v2", status: "published", content: "Pedidos e información - Ciudad Prueba\n- Asesor Uno: 70000001" }], error: null });
+    mocks.rpc.mockResolvedValue({ data: [{ ...indexedResponse.data[0], content: "Pedidos e información - Ciudad Prueba\n- Asesor Uno: 79999999" }], error: null });
+    mocks.catalog.mockResolvedValue([{ id: "synthetic-product", name: "Colchón de prueba", category: "Colchones", published: true,
+      availability: "available", priceFrom: 999, shortDescription: "", description: "", specifications: [], variants: [] }]);
+    const { buildRagContext } = await import("./service");
+    const result = await buildRagContext([{ ...history[0], content: "Dame el teléfono de Ciudad Prueba y cuánto cuesta el colchón" }]);
+    expect(result.directoryReply).toBeUndefined();
+    expect(result.contactEvidence).toContain("Asesor Uno: 70000001");
+    expect(result.context).toContain("Bs 999");
+    expect(result.context).not.toContain("79999999");
+  });
+  it("retains payment policy from a shared contact document for a mixed phone and payment question", async () => {
+    const content = "Pedidos e información - Ciudad Prueba\n- Asesor Uno: 70000001\n\nFormas de pago\nSe aceptan pagos en efectivo o por QR.";
+    mocks.published.mockResolvedValue({ data: [{ id: "synthetic-contacts-v2", status: "published", content }], error: null });
+    mocks.rpc.mockResolvedValue({ data: [{ ...indexedResponse.data[0], content: content.replace("70000001", "79999999") }], error: null });
+    const { buildRagContext } = await import("./service");
+    const { requiresHumanHandoffForQuery } = await import("./policy");
+    const query = "Dame el teléfono de Ciudad Prueba y formas de pago";
+    const result = await buildRagContext([{ ...history[0], content: query }]);
+    expect(result.contactEvidence).toContain("Asesor Uno: 70000001");
+    expect(result.context).toContain("Se aceptan pagos en efectivo o por QR.");
+    expect(result.context).not.toContain("79999999");
+    expect(requiresHumanHandoffForQuery(query, result.sources)).toBe(false);
+  });
   const publishedPolicy = { id: "synthetic-policy-v1", status: "published", rag_documents: { title: "Garantía aprobada" },
     content: "La garantía cubre defectos de fabricación durante 12 meses." };
 
@@ -44,11 +87,12 @@ describe("published knowledge as a secondary source", () => {
     expect(result.context).toContain("12 meses");
   });
 
-  it("does not query the secondary store when indexed knowledge is relevant", async () => {
+  it("retains relevant indexed hours after checking for an explicitly scoped city directory", async () => {
     mocks.rpc.mockResolvedValue(indexedResponse);
     const { buildRagContext } = await import("./service");
-    await buildRagContext(history);
-    expect(mocks.published).not.toHaveBeenCalled();
+    const result = await buildRagContext(history);
+    expect(mocks.published).toHaveBeenCalledOnce();
+    expect(result.sources[0].id).toBe("knowledge-synthetic-hours");
   });
 
   it("does not inject unrelated documents or draft content", async () => {

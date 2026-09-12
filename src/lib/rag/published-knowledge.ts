@@ -18,7 +18,7 @@ export function invalidatePublishedKnowledgeCache(): void {
   pending = undefined;
 }
 
-async function readPublishedChunks(): Promise<KnowledgeChunk[]> {
+async function readPublishedChunks(wholeDocuments = false): Promise<KnowledgeChunk[]> {
   const chunks: KnowledgeChunk[] = [];
   for (let page = 0; page < MAX_PAGES; page += 1) {
     const { data, error } = await getCatalogServerClient().from("rag_document_versions")
@@ -32,6 +32,10 @@ async function readPublishedChunks(): Promise<KnowledgeChunk[]> {
       if (row.status !== "published" || typeof row.id !== "string" || typeof row.content !== "string") continue;
       if (!row.content.trim()) continue;
       // Document titles are shared with drafts, so only versioned content is safe.
+      if (wholeDocuments) {
+        chunks.push({ id: `published-${row.id}-0`, title: "Documento publicado", content: row.content });
+        continue;
+      }
       for (const [index, chunk] of chunkKnowledgeContent("Documento publicado", row.content).entries()) {
         chunks.push({ id: `published-${row.id}-${index}`, title: chunk.title, content: chunk.content });
       }
@@ -43,8 +47,14 @@ async function readPublishedChunks(): Promise<KnowledgeChunk[]> {
 }
 
 /** Secondary lexical source when the search index cannot provide useful knowledge. */
-export function getPublishedKnowledgeChunks(): Promise<KnowledgeChunk[]> {
+export function getPublishedKnowledgeChunks(options: { fresh?: boolean; wholeDocuments?: boolean } = {}): Promise<KnowledgeChunk[]> {
   if (!isCatalogConfigured()) return Promise.resolve([]);
+  // Phone ownership must reflect the current published version, not an approval cache.
+  // This independent read neither revives nor overwrites a cache invalidated while it runs.
+  if (options.fresh || options.wholeDocuments) return readPublishedChunks(options.wholeDocuments).catch(() => {
+    console.warn("[rag] No se pudo verificar el directorio publicado.");
+    return [];
+  });
   if (cached && Date.now() < cached.expiresAt) return Promise.resolve(cached.chunks);
   if (pending) return pending;
   const requestGeneration = generation;

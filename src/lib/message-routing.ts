@@ -98,16 +98,39 @@ export function requestsCheckoutAction(content: string): boolean {
       && /\b(?:qr|gps|ubicacion|comprobante|pago)\b/.test(value));
 }
 
+function hasConcreteContactData(content: string): boolean {
+  return /(?:\d[\s().-]*){7,}|https?:\/\/\S+|[\w.+-]+@[\w.-]+\.[a-z]{2,}/i.test(content);
+}
+
+function mentionsPrivateCommerceData(value: string): boolean {
+  return /\b(?:mi|mis)\s+(?:(?:nuevo|nueva|nuevos|nuevas)\s+)?(?:numeros?|telefonos?|celular(?:es)?|contactos?|tarjetas?|direccion|ubicacion|cuenta(?:\s+bancaria)?|datos?\s+bancarios?)\b/.test(value)
+    || /\b(?:numeros?|codigos?)\s+(?:(?:de|del)\s+)?(?:(?:mi|mis|tu|tus|la|el|un|una)\s+)?(?:tarjeta|cuenta|pedido|comprobante|transferencia|deposito|documento|identidad|carnet|cedula|casa)\b/.test(value)
+    || /\b(?:cvv|pin|datos?\s+bancarios?|cuenta\s+bancaria)\b/.test(value);
+}
+
+/** Solicita un contacto comercial; los nombres y teléfonos deben validarse en fuentes publicadas. */
+export function isPublicContactQuestion(content: string): boolean {
+  const value = normalize(content);
+  if (hasConcreteContactData(content) || mentionsPrivateCommerceData(value)) return false;
+  const contactTopic = /\b(?:numeros?|telefonos?|celular(?:es)?|contactos?|whatsapp)\b/;
+  if (!contactTopic.test(value)) return false;
+  return /[¿?]/.test(content)
+    || /\b(?:dame|pasame|enviame|mandame|comparteme|quiero|quisiera|necesito|cual(?:es)?|tienen|tienes|saber|informacion|me das|me da|me pueden dar)\b/.test(value)
+    || /^(?:(?:y|el|la|los|las|su|sus|un|una)\s+)*(?:numeros?|telefonos?|celular(?:es)?|contactos?|whatsapp)\b/.test(value);
+}
+
 /** Información pública de Terra que puede responder el RAG, aun con un pedido activo. */
 export function isPublicCompanyQuestion(content: string): boolean {
   const normalized = normalize(content);
+  if (mentionsPrivateCommerceData(normalized)) return false;
+  if (isPublicContactQuestion(content)) return true;
   if (/\b(?:su|sus|vuestra|de terra|de la tienda|del local)\b/.test(normalized)
     && /\b(?:direccion|ubicacion)\b/.test(normalized)
     && isCheckoutInformationQuestion(content)) return true;
   const companyTopic = /\b(sucursal(?:es)?|oficina(?:s)?|tienda(?:s)?|local(?:es)?|horario(?:s)?|atencion|contacto)\b/i;
   if (!companyTopic.test(normalized)) return false;
   return /[¿?]/.test(content)
-    || /\b(donde|cual(?:es)?|como|cuando|quiero|quisiera|necesito|informacion|saber|atienden|abren|cierran)\b/i.test(normalized);
+    || /\b(donde|cual(?:es)?|como|cuando|dame|pasame|enviame|quiero|quisiera|necesito|informacion|saber|atienden|abren|cierran)\b/i.test(normalized);
 }
 
 /** Mensajes sin una duda concreta: se pide la pregunta antes de reanudar el pedido. */
@@ -121,9 +144,10 @@ export function requestsGeneralInformation(content: string): boolean {
 /** Datos de ubicación o financieros concretos no se mandan al modelo. */
 export function hasSensitiveCommerceData(content: string): boolean {
   // Los datos concretos se protegen incluso si el mismo mensaje incluye una duda pública.
-  if (/(?:\d[\s().-]*){7,}|https?:\/\/\S+|[\w.+-]+@[\w.-]+\.[a-z]{2,}/i.test(content)) return true;
-  if (isPublicCompanyQuestion(content)) return false;
+  if (hasConcreteContactData(content)) return true;
   const value = normalize(content);
+  if (mentionsPrivateCommerceData(value)) return true;
+  if (isPublicCompanyQuestion(content)) return false;
   if (/\b(?:mi|mis)\s+(?:tarjeta|datos? bancarios?|cuenta bancaria)\b|\b(?:numero|codigo|cvv|pin)\b/.test(value)) return true;
   if (isCheckoutInformationQuestion(content) && /\b(?:aceptan|pagar|formas de pago|metodos de pago)\b/.test(value)
     && !/\b(?:gps|ubicacion|direccion)\b/.test(value)) return false;

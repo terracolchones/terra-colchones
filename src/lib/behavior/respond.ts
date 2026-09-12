@@ -4,6 +4,7 @@ import { requiresHumanHandoffForQuery } from "@/lib/rag/policy";
 import type { RagContext } from "@/lib/rag/service";
 import { composeInstructions, type ReplyContext } from "./instructions";
 import { sanitizeHistory } from "./privacy";
+import { containsInternalPlaceholder, formatAssistantText, hasUnsupportedPublicContact } from "./output-format";
 import type { BehaviorVersion } from "./types";
 
 export interface AssistantReply { content: string; needsAdvisorConfirmation: boolean; }
@@ -26,15 +27,25 @@ export function createAssistantResponder(deps: ResponderDependencies) {
     let rag: RagContext = { context: "", sources: [] };
     try { rag = await deps.retrieve(safeHistory, selectedLead); }
     catch { deps.onRetrievalFailure?.(); }
+    if (rag.directoryReply) {
+      const content = formatAssistantText(rag.directoryReply);
+      if (!content || containsInternalPlaceholder(content)) return { content: ADVISOR_CONFIRMATION_REPLY, needsAdvisorConfirmation: true };
+      return { content, needsAdvisorConfirmation: false };
+    }
     const query = [...safeHistory].reverse().find((message) => message.role === "user")?.content;
     if (query && requiresHumanHandoffForQuery(query, rag.sources)) {
       return { content: ADVISOR_CONFIRMATION_REPLY, needsAdvisorConfirmation: true };
     }
-    const content = (await deps.complete({
+    const rawContent = (await deps.complete({
       instructions: composeInstructions(active.instructions, rag.context, context), history: safeHistory,
     })).trim();
-    if (!content || /(?:thinking process|reasoning process|<think>|analyze user input|formulate response)/i.test(content)) {
+    if (!rawContent || /(?:thinking process|reasoning process|<think>|analyze user input|formulate response)/i.test(rawContent)) {
       throw new Error("Respuesta del modelo no utilizable");
+    }
+    const content = formatAssistantText(rawContent);
+    if (!content || containsInternalPlaceholder(content)) return { content: ADVISOR_CONFIRMATION_REPLY, needsAdvisorConfirmation: true };
+    if (rag.contactEvidence !== undefined && hasUnsupportedPublicContact(content, rag.contactEvidence)) {
+      return { content: ADVISOR_CONFIRMATION_REPLY, needsAdvisorConfirmation: true };
     }
     return { content, needsAdvisorConfirmation: isHumanHandoffReply(content) };
   };

@@ -20,6 +20,7 @@ import {
   type RetrievedSource,
 } from "@/lib/rag/core";
 import { getPublishedKnowledgeChunks } from "@/lib/rag/published-knowledge";
+import { buildPublicDirectoryReply, hasOtherCommerceQuestion, shouldRetrievePublicDirectory, type DirectoryReply } from "@/lib/rag/public-contacts";
 
 const knowledgeFile = path.join(process.cwd(), "docs", "rag", "base-conocimiento-terra.md");
 let knowledgePromise: Promise<KnowledgeChunk[]> | undefined;
@@ -30,6 +31,8 @@ let semanticSearchRetryAfter = 0;
 export interface RagContext {
   context: string;
   sources: RetrievedSource[];
+  directoryReply?: string;
+  contactEvidence?: string;
 }
 
 interface IndexedChunk {
@@ -165,6 +168,24 @@ export async function buildRagContext(
   const query = latestCustomerQuestion(history);
   if (!query) return { context: "", sources: [] };
 
+  let mixedDirectory: DirectoryReply | undefined;
+  if (shouldRetrievePublicDirectory(history)) {
+    const directory = buildPublicDirectoryReply(history, await getPublishedKnowledgeChunks({ fresh: true, wholeDocuments: true }));
+    if (directory && !hasOtherCommerceQuestion(query)) return { context: formatRetrievedSources(directory.sources), sources: directory.sources, directoryReply: directory.content };
+    if (directory) mixedDirectory = directory;
+  }
+
+  const finish = (input: RetrievedSource[]): RagContext => {
+    // Mixed questions retain normal product/policy retrieval, but the phone directory has one current authority.
+    const sources = mixedDirectory ? [...input.map((source) => source.kind !== "knowledge" ? source : {
+      ...source,
+      // The same approved document may also contain payment/shipping policies.
+      // Remove indexed phone fields while retaining that independently useful evidence.
+      content: source.content.split(/\r?\n/).filter((line) => !/^\s*[-*•]?\s*[\p{L}][\p{L} .'-]{0,59}:\s*\+?\d[\d ().-]{6,}/u.test(line)).join("\n").trim(),
+    }).filter((source) => source.content), ...mixedDirectory.sources] : input;
+    return { context: formatRetrievedSources(sources), sources, ...(mixedDirectory ? { contactEvidence: mixedDirectory.content } : {}) };
+  };
+
   const [knowledge, indexed] = await Promise.all([loadKnowledge(), searchIndexedKnowledge(query)]);
   const selectedLead = persistedLead ?? selectedCatalogLead(history);
 
@@ -202,7 +223,7 @@ export async function buildRagContext(
       ? []
       : await secondaryKnowledge(query, knowledge);
     const sources = [...catalogSources, ...indexedKnowledge, ...fallbackKnowledge];
-    return { context: formatRetrievedSources(sources), sources };
+    return finish(sources);
   }
 
   const catalog = await getPublishedCatalogProductsForRag().catch(() => {
@@ -217,5 +238,5 @@ export async function buildRagContext(
     selectedLead,
   });
   const sources = [...catalogSources, ...await secondaryKnowledge(query, knowledge)];
-  return { context: formatRetrievedSources(sources), sources };
+  return finish(sources);
 }

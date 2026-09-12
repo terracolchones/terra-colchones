@@ -106,7 +106,7 @@ describe("shared processor simulation with fictitious providers", () => {
     const result = await simulateBehavior({ ...baseInput, message: "Hola Terra, confirmo mi pedido #T-DEMO-0001" });
     expect(result.route).toBe("Confirmación y solicitud GPS simulada");
     expect(result.modelCalled).toBe(false);
-    expect(result.replies.join(" ")).toContain('Si prefieres atención humana, escribe "asesor".');
+    expect(result.replies.join(" ")).toContain('Si quieres hablar con un asesor, escribe "asesor".');
     expect(result.replies.join(" ")).toContain("Solicitud GPS simulada");
   });
 

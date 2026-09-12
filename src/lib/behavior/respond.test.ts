@@ -19,6 +19,29 @@ function setup() {
 }
 
 describe("runtime consumes published behavior and approved context", () => {
+  it("returns current directory facts without asking the model to rewrite numbers", async () => {
+    const f = setup();
+    f.retrieve.mockResolvedValueOnce({ context: "", sources: [], directoryReply: "Ciudad Prueba\nAsesor Uno: 70000001" });
+    const result = await f.respond([message("Dame los teléfonos")]);
+    expect(result).toEqual({ content: "Ciudad Prueba\nAsesor Uno: 70000001", needsAdvisorConfirmation: false });
+    expect(f.complete).not.toHaveBeenCalled();
+  });
+  it("never returns internal redaction placeholders or literal formatting to the customer", async () => {
+    const f = setup();
+    f.complete.mockResolvedValueOnce("Para la sucursal: [número de contacto omitido].");
+    expect((await f.respond([message("Me parece caro")])).content).not.toContain("omitido");
+    f.complete.mockResolvedValueOnce("**Información**\n* Dirección: Calle de Prueba.");
+    expect((await f.respond([message("Me parece caro")])).content).toBe("Información\nDirección: Calle de Prueba.");
+  });
+  it("rejects an invented mixed-answer phone without a second model call", async () => {
+    const f = setup();
+    f.retrieve.mockResolvedValueOnce({ context: "", sources: [], contactEvidence: "Asesor Uno: 70000001" });
+    f.complete.mockResolvedValueOnce("Asesor Uno: 79999999");
+    const result = await f.respond([message("Me parece caro")]);
+    expect(result.needsAdvisorConfirmation).toBe(true);
+    expect(result.content).not.toContain("79999999");
+    expect(f.complete).toHaveBeenCalledOnce();
+  });
   it("reads active instructions again on the next turn and includes protected rules", async () => {
     const f = setup();
     await f.respond([message("¿Cuáles son los horarios?")]);

@@ -16,6 +16,16 @@ beforeEach(() => {
 afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); });
 
 describe("published knowledge cache", () => {
+  it("fresh directory reads bypass cached old approvals and preserve a complete long phone field", async () => {
+    const { getPublishedKnowledgeChunks } = await import("./published-knowledge");
+    await getPublishedKnowledgeChunks();
+    const longContent = "Pedidos e información - Ciudad Prueba\n" + "Detalle sintético. ".repeat(100) + "\n- Asesor Uno: 70000001";
+    mocks.range.mockResolvedValue({ data: [{ ...version("synthetic-v2"), content: longContent }], error: null });
+    const result = await getPublishedKnowledgeChunks({ fresh: true, wholeDocuments: true });
+    expect(result).toHaveLength(1);
+    expect(result[0].content).toBe(longContent);
+    expect((await getPublishedKnowledgeChunks())[0].id).toContain("synthetic-v1");
+  });
   it("does not retrieve or expose a mutable draft title in the model sources", async () => {
     mocks.range.mockResolvedValue({ data: [{ ...version("synthetic-published"),
       rag_documents: { title: "DRAFT_TITLE_SENTINEL promoción no publicada" },

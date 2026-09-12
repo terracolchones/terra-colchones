@@ -177,7 +177,7 @@ describe("explicit advisor access without false handoffs", () => {
   it("retains the exact advisor instruction for a first website order confirmation", async () => {
     fixture.db.claimCatalogOrder.mockReturnValueOnce({ result: "claimed", order: order("awaiting_location") });
     await processWebhookPayload(payload("Hola Terra, confirmo mi pedido #T-TEST-DEMO"));
-    expect(sentText()).toContain('Si prefieres atención humana, escribe "asesor".');
+    expect(sentText()).toContain('Si quieres hablar con un asesor, escribe "asesor".');
     expect(fixture.meta.sendTextMessage).toHaveBeenCalledTimes(1);
     expect(fixture.dispatchCatalogLocationRequest).toHaveBeenCalledExactlyOnceWith("synthetic-behavior-order");
   });
@@ -382,6 +382,59 @@ describe("a confirmed order supplies context without forcing every message into 
     expect(fixture.meta.sendCatalogCtaMessage).not.toHaveBeenCalled();
     expectNoCheckoutAction();
   });
+
+  it.each([
+    [null, "Dame los número de Cochabamba"],
+    ["awaiting_location", "Dame los número de Cochabamba"],
+    ["awaiting_payment", "Dame los números de Cochabamna"],
+    ["payment_proof_received", "Número de contacto?"],
+    ["awaiting_payment", "¿Y su número?"],
+    [null, "Pásame el contacto del asesor de la tienda"],
+  ])("keeps a contact query conversational with order state %s: %s", async (status, content) => {
+    const activeOrder = status ? order(status) : null;
+    const before = structuredClone(activeOrder);
+    fixture.db.getLatestActiveCatalogOrderForConversation.mockReturnValue(activeOrder);
+    const event = payload(content as string);
+    await processWebhookPayload(event);
+    await processWebhookPayload(event);
+
+    expect(fixture.generateAssistantReply).toHaveBeenCalledTimes(1);
+    expect(fixture.meta.sendTextMessage).toHaveBeenCalledExactlyOnceWith(fixture.phone, "Respuesta aprobada de prueba.");
+    expect(fixture.meta.sendCatalogCtaMessage).not.toHaveBeenCalled();
+    expect(fixture.db.setMode).not.toHaveBeenCalled();
+    expect(activeOrder).toEqual(before);
+    expectNoCheckoutAction();
+  });
+
+  it.each(["¿Cuál es el número de mi pedido?", "Mi dirección es privada; dame el contacto de la oficina"])(
+    "preserves private-data protection during a purchase: %s", async (content) => {
+      fixture.db.getLatestActiveCatalogOrderForConversation.mockReturnValue(order());
+      await processWebhookPayload(payload(content));
+      expect(fixture.generateAssistantReply).not.toHaveBeenCalled();
+      expect(sentText()).toContain("Un asesor puede revisar ese dato de tu pedido.");
+      expect(fixture.db.setMode).not.toHaveBeenCalled();
+      expectNoCheckoutAction();
+    },
+  );
+
+  it.each(["Ciudad Ejemplo", "¿Y Asesor Ejemplo?"])(
+    "passes contact clarifications and their history through without resuming checkout: %s", async (content) => {
+      fixture.db.getLatestActiveCatalogOrderForConversation.mockReturnValue(order("awaiting_payment"));
+      fixture.messages.push(
+        { id: 1, role: "user", content: "Dame los teléfonos de la tienda", wa_message_id: "synthetic-contact-question" },
+        { id: 2, role: "assistant", content: "¿De qué ciudad necesitas los contactos?", wa_message_id: "synthetic-contact-clarification" },
+      );
+      await processWebhookPayload(payload(content));
+      expect(fixture.generateAssistantReply).toHaveBeenCalledTimes(1);
+      expect(fixture.generateAssistantReply.mock.calls[0][0]).toEqual(expect.arrayContaining([
+        expect.objectContaining({ role: "user", content: "Dame los teléfonos de la tienda" }),
+        expect.objectContaining({ role: "user", content }),
+      ]));
+      expect(fixture.meta.sendTextMessage).toHaveBeenCalledTimes(1);
+      expect(fixture.db.setMode).not.toHaveBeenCalled();
+      expectNoCheckoutAction();
+    },
+  );
 });
 
 describe("intent edge cases preserve consent and access to knowledge", () => {
