@@ -142,6 +142,19 @@ describe("recoverable knowledge index", () => {
     expect(mocks.rpc).toHaveBeenCalledTimes(1);
   });
 
+  it("keeps a valid semantic paraphrase without requiring lexical overlap", async () => {
+    vi.stubEnv("RAG_SEMANTIC_SEARCH_ENABLED", "true");
+    mocks.semantic.mockResolvedValue({ data: { results: [{ id: "synthetic-evening-hours", title: "Horarios",
+      source_kind: "knowledge", catalog_product_id: null, content: "El local permanece abierto hasta las 21:00.", score: 1 }] }, error: null });
+    const { buildRagContext } = await import("./service");
+    const result = await buildRagContext([{ ...history[0], content: "¿Atienden después de que anochece?" }]);
+    expect(result.sources).toHaveLength(1);
+    expect(result.sources[0].id).toBe("knowledge-synthetic-evening-hours");
+    expect(result.context).toContain("21:00");
+    expect(mocks.rpc).not.toHaveBeenCalled();
+    expect(mocks.published).not.toHaveBeenCalled();
+  });
+
   it("backs off a failed semantic service independently of successful FTS and retries after 30 seconds", async () => {
     vi.stubEnv("RAG_SEMANTIC_SEARCH_ENABLED", "true");
     mocks.semantic.mockResolvedValueOnce({ data: null, error: { status: 401, message: "PRIVATE_SEMANTIC_SENTINEL" } })

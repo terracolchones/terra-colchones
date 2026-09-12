@@ -97,7 +97,7 @@ function indexedChunk(value: unknown): IndexedChunk | null {
  * instalación todavía no tiene la migración, el RAG actual queda operativo
  * con su recuperación léxica segura, sin interrumpir WhatsApp.
  */
-async function searchIndexedKnowledge(query: string): Promise<IndexedChunk[] | null> {
+async function searchIndexedKnowledge(query: string): Promise<{ chunks: IndexedChunk[]; mode: "semantic" | "fts" } | null> {
   if (!isCatalogConfigured()) return null;
   // Se activa después de desplegar las Edge Functions y el worker. Hasta ese
   // momento la misma RPC entrega FTS, sin depender de un proveedor externo.
@@ -108,7 +108,7 @@ async function searchIndexedKnowledge(query: string): Promise<IndexedChunk[] | n
       const result = semantic.data as { results?: unknown };
       if (Array.isArray(result.results)) {
         semanticSearchRetryAfter = 0;
-        return result.results.map(indexedChunk).filter((item): item is IndexedChunk => item !== null);
+        return { mode: "semantic", chunks: result.results.map(indexedChunk).filter((item): item is IndexedChunk => item !== null) };
       }
     }
     semanticSearchRetryAfter = Date.now() + INDEX_RETRY_COOLDOWN_MS;
@@ -129,7 +129,7 @@ async function searchIndexedKnowledge(query: string): Promise<IndexedChunk[] | n
     }
     indexedSearchRetryAfter = 0;
     const rows: unknown[] = Array.isArray(data) ? data : [];
-    return rows.map(indexedChunk).filter((item): item is IndexedChunk => item !== null);
+    return { mode: "fts", chunks: rows.map(indexedChunk).filter((item): item is IndexedChunk => item !== null) };
   } catch {
     indexedSearchRetryAfter = Date.now() + INDEX_RETRY_COOLDOWN_MS;
     console.warn("[rag] La búsqueda no pudo completarse; se usa la recuperación compatible y se volverá a intentar.");
@@ -169,7 +169,7 @@ export async function buildRagContext(
   const selectedLead = persistedLead ?? selectedCatalogLead(history);
 
   if (indexed) {
-    const productIds = indexed
+    const productIds = indexed.chunks
       .filter((item) => item.sourceKind === "catalog" && item.catalogProductId)
       .map((item) => item.catalogProductId!);
     if (selectedLead?.productId) productIds.push(selectedLead.productId);
@@ -186,14 +186,16 @@ export async function buildRagContext(
       catalogSources = retrieveApprovedSources({ query, products: lexicalCatalog, knowledge: [], selectedLead })
         .filter((source) => source.kind === "catalog");
     }
-    const indexedKnowledgeCandidates = indexed
+    const indexedKnowledgeCandidates = indexed.chunks
       .filter((item) => item.sourceKind === "knowledge")
       .map(sourceFromIndexedKnowledge);
     const relevantIds = new Set(retrieveApprovedSources({
       query, products: [], knowledge: indexedKnowledgeCandidates.map((source) => ({ id: source.id, title: source.label, content: source.content })),
       maxProducts: 0,
     }).map((source) => source.id));
-    const indexedKnowledge = indexedKnowledgeCandidates.filter((source) => relevantIds.has(source.id));
+    // Semantic search intentionally matches paraphrases without shared words.
+    const indexedKnowledge = indexed.mode === "semantic" ? indexedKnowledgeCandidates
+      : indexedKnowledgeCandidates.filter((source) => relevantIds.has(source.id));
 
     // Prefer current published documents before the legacy Markdown fallback.
     const fallbackKnowledge = indexedKnowledge.length > 0

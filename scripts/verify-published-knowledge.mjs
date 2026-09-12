@@ -121,7 +121,7 @@ async function readOnlyFetch(input, options = {}) {
   let rpcBody;
   if (method === "GET" && url.pathname === "/rest/v1/catalog_products") permitted = url.searchParams.get("published") === "eq.true";
   if (method === "GET" && url.pathname === "/rest/v1/rag_document_versions") permitted = url.searchParams.get("status") === "eq.published"
-    && ["id,document_id,rag_documents(title,kind)", "id,status,content,rag_documents(title)"].includes(url.searchParams.get("select"));
+    && ["id,document_id,rag_documents(kind)", "id,status,content"].includes(url.searchParams.get("select"));
   if (method === "GET" && url.pathname === "/rest/v1/rag_chunks") {
     const selected = url.searchParams.get("document_version_id") ?? "";
     const ids = /^in\.(\(.*\))$/.test(selected) ? selected.slice(4, -1).split(",").map((id) => id.replaceAll('"', "")) : [];
@@ -192,7 +192,7 @@ function load(filename) {
 }
 
 async function inspectPublishedInventory(client) {
-  const { data: versions, error } = await client.from("rag_document_versions").select("id,document_id,rag_documents(title,kind)").eq("status", "published").limit(1000);
+  const { data: versions, error } = await client.from("rag_document_versions").select("id,document_id,rag_documents(kind)").eq("status", "published").limit(1000);
   if (error || !Array.isArray(versions)) return { status: "unavailable", publishedDocuments: null, publishedChunks: null };
   if (versions.length >= 1000) return { status: "inventory_limit_reached", publishedDocuments: versions.length, publishedChunks: null };
   for (const version of versions) publishedVersionIds.add(version.id);

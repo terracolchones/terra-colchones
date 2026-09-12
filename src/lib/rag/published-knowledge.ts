@@ -22,7 +22,7 @@ async function readPublishedChunks(): Promise<KnowledgeChunk[]> {
   const chunks: KnowledgeChunk[] = [];
   for (let page = 0; page < MAX_PAGES; page += 1) {
     const { data, error } = await getCatalogServerClient().from("rag_document_versions")
-      .select("id,status,content,rag_documents(title)")
+      .select("id,status,content")
       .eq("status", "published")
       .order("id", { ascending: true })
       .range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1);
@@ -30,9 +30,9 @@ async function readPublishedChunks(): Promise<KnowledgeChunk[]> {
     for (const row of data) {
       // The query is publication-only; still reject malformed/unapproved rows.
       if (row.status !== "published" || typeof row.id !== "string" || typeof row.content !== "string") continue;
-      const document = Array.isArray(row.rag_documents) ? row.rag_documents[0] : row.rag_documents;
-      if (!document || typeof document.title !== "string" || !document.title.trim() || !row.content.trim()) continue;
-      for (const [index, chunk] of chunkKnowledgeContent(document.title, row.content).entries()) {
+      if (!row.content.trim()) continue;
+      // Document titles are shared with drafts, so only versioned content is safe.
+      for (const [index, chunk] of chunkKnowledgeContent("Documento publicado", row.content).entries()) {
         chunks.push({ id: `published-${row.id}-${index}`, title: chunk.title, content: chunk.content });
       }
     }

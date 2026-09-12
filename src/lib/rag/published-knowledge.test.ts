@@ -16,6 +16,21 @@ beforeEach(() => {
 afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); });
 
 describe("published knowledge cache", () => {
+  it("does not retrieve or expose a mutable draft title in the model sources", async () => {
+    mocks.range.mockResolvedValue({ data: [{ ...version("synthetic-published"),
+      rag_documents: { title: "DRAFT_TITLE_SENTINEL promoción no publicada" },
+    }], error: null });
+    const { getPublishedKnowledgeChunks } = await import("./published-knowledge");
+    const { retrieveApprovedSources, formatRetrievedSources } = await import("./core");
+    const knowledge = await getPublishedKnowledgeChunks();
+    const sources = retrieveApprovedSources({ query: "¿Qué cubre la garantía?", products: [], knowledge });
+    expect(mocks.select).toHaveBeenCalledWith("id,status,content");
+    expect(sources).toHaveLength(1);
+    expect(sources[0].label).toBe("Documento publicado");
+    expect(formatRetrievedSources(sources)).not.toContain("DRAFT_TITLE_SENTINEL");
+    expect(formatRetrievedSources(sources)).toContain("defectos de fabricación");
+  });
+
   it("only queries published versions and rejects drafts even in a malformed result", async () => {
     mocks.range.mockResolvedValue({ data: [version("synthetic-published"), version("synthetic-draft", "draft"), version("synthetic-archived", "archived")], error: null });
     const { getPublishedKnowledgeChunks } = await import("./published-knowledge");
