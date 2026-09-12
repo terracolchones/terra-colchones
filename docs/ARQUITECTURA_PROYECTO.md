@@ -91,10 +91,10 @@ internos, teléfonos ni acceso a SQLite.
 - El catálogo tenía configurado un número de prueba. Se sustituyó únicamente
   `TERRA_WHATSAPP_PHONE` por el número comercial verificado y EasyPanel confirmó
   `Env updated`. Los números y credenciales no se copian a esta documentación.
-- **Pendiente de autorización explícita para desplegar**: el guardado de variables
-  no actualiza el contenedor en ejecución. La revisión automática rechazó el
-  intento de Deploy porque exige la solicitud expresa de despliegue establecida
-  en `AGENTS.md`. No publicar por Git como alternativa a ese bloqueo.
+- El 12 de septiembre de 2026 el usuario autorizó expresamente publicar las
+  correcciones y desplegar únicamente `terra-catalogo / catalogo`, después de
+  que la revisión automática pidiera esa confirmación. El número guardado en
+  EasyPanel se aplica con ese despliegue; no se modifica el servicio del agente.
 - El código del catálogo toma el destino de `TERRA_WHATSAPP_PHONE` (o de la
   variable pública anterior por compatibilidad); ya no consulta Meta desde el
   catálogo ni utiliza un número fijo de respaldo. La configuración inválida
