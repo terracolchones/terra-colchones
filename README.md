@@ -70,7 +70,7 @@ SUPABASE_SECRET_KEY=sb_secret_...
 SUPABASE_QR_BUCKET=chatbot-qr
 SUPABASE_PAYMENT_QR_PATH=payment-qr.jpeg
 QR_UPLOAD_TOKEN=token-aleatorio-largo-compartido-con-el-generador-qr
-ORDER_CONFIRMATION_TOKEN=otro-token-aleatorio-largo-para-un-sistema-externo
+ORDER_FLOW_TOKEN=token-aleatorio-largo-compartido-con-el-catalogo
 ```
 
 - `META_ACCESS_TOKEN` debe ser un **System User Token permanente**. Los tokens de prueba de Meta duran 24 horas y no sirven para producción.
@@ -114,18 +114,19 @@ curl -X POST "$APP_URL/api/qr" \
 
 La respuesta devuelve una URL firmada válida por cinco minutos. Los QR se sobrescriben por sesión, se mantienen privados y no se guardan en el navegador. Al enviar un QR de pago, WhatsApp descarga esa URL temporal directamente desde Supabase; el dashboard solo conserva el registro “QR de pago enviado”.
 
-## Confirmación desde un sistema externo
+## Confirmación desde el catálogo
 
-Un sistema externo puede llamar a esta ruta **desde su servidor**, nunca desde JavaScript del navegador, cuando el pedido cambie a confirmado:
+El servidor del catálogo crea el pedido en `POST /api/catalog-orders` del agente,
+autenticado con `X-Terra-Order-Token`. Recibe un código público opaco y abre
+WhatsApp con `Hola Terra, confirmo mi pedido #T-7Q4K-8M2P`. El webhook firmado del
+cliente confirma y vincula el pedido antes de solicitar GPS y después enviar QR.
+El enlace privado conserva la asociación cuando la compra comenzó por chat.
 
-```bash
-curl -X POST "$CHATBOT_URL/api/order-confirmations" \
-  -H "Authorization: Bearer $ORDER_CONFIRMATION_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{"orderId":"pedido-123","customerPhone":"59170000000","customerName":"Cliente"}'
-```
-
-El `orderId` es idempotente: aunque el sistema externo reintente la llamada, el QR no se envía dos veces. El número debe incluir el código de país y solo dígitos. WhatsApp solo permite mensajes de pago libres dentro de la ventana de 24 horas desde el último mensaje del cliente; fuera de ella se devuelve un error para que el sistema pueda pedir intervención del operador.
+Desde esta liberación, `POST /api/order-confirmations` está retirado: devuelve
+`410 Gone` a los consumidores autenticados y no lee datos del cliente, abre
+SQLite ni envía mensajes. La autenticación histórica sigue fallando cerrada si
+falta `ORDER_CONFIRMATION_TOKEN`; no hace falta crear esa variable para la
+integración actual. Se conservan las tablas y reservas históricas.
 
 ## Configuración de Meta
 
@@ -151,12 +152,15 @@ La aplicación devuelve el `hub.challenge` como `text/plain`, tal como exige Met
 - `POST /api/webhook` valida `X-Hub-Signature-256` mediante HMAC SHA-256 calculado sobre el body crudo.
 - Responde `200` inmediatamente para evitar reintentos por timeout de Meta y procesa el evento de forma asíncrona.
 - Cada mensaje se deduplica por su `wa_message_id` antes de llamar a OpenAI o responder a WhatsApp.
-- Los primeros mensajes, saludos y solicitudes de compra reciben un CTA a `CATALOG_PUBLIC_URL` o, por compatibilidad, a `/catalogo` dentro de `PUBLIC_APP_URL`; no existe checkout web heredado.
-- Todos los datos locales se guardan en `data/messages.db` con SQLite y modo WAL.
-- En modo **IA**, se envían los últimos 20 mensajes a la [Responses API](https://developers.openai.com/api/reference/responses/create) con el prompt de `src/lib/system-prompt.ts`. Las respuestas se solicitan con `store: false`.
+- Los saludos y solicitudes de catálogo reciben el CTA. Una consulta concreta, aunque sea el primer mensaje, puede responderse con conocimiento aprobado sin exigir una compra.
+- Las conversaciones y pedidos viven en `data/messages.db`. La configuración editable usa `data/agent-behavior.db` (o `TERRA_BEHAVIOR_DB_PATH`), también con SQLite y modo WAL.
+- En modo **IA**, se minimizan los últimos 20 mensajes y se consulta la [Responses API](https://developers.openai.com/api/reference/responses/create) con la versión publicada del prompt, el contexto comercial y las fuentes recuperadas. Las respuestas se solicitan con `store: false`.
 - En modo **HUMANO**, el dashboard envía el texto directamente a Graph API y conserva un mensaje con icono de error si el envío falla.
 
-Personaliza el comportamiento del asistente en [src/lib/system-prompt.ts](src/lib/system-prompt.ts).
+Personaliza el comportamiento en `/comportamiento`: guardar conserva un borrador;
+publicar activa su versión para la siguiente consulta al modelo. Las instrucciones
+iniciales viven en `src/lib/system-prompt.ts`; las protecciones de transporte,
+HUMANO y pagos permanecen en código. El simulador está identificado como ficticio.
 
 ## Límite de 24 horas de WhatsApp
 
@@ -189,7 +193,7 @@ web: npm run start
 ```
 
 - Configura todas las variables de entorno en EasyPanel.
-- Agrega un volumen persistente montado en `/app/data`; allí vive `messages.db`.
+- Agrega un volumen persistente montado en `/app/data`; allí viven `messages.db` y `agent-behavior.db`. Respalda ambas con un método consistente con SQLite/WAL y comprueba restauración; un respaldo de Git no contiene estos datos.
 - Activa HTTPS antes de registrar el webhook: Meta no acepta URLs HTTP públicas.
 - El build usa `npm ci --include=dev` y el arranque usa `npm run start`.
 

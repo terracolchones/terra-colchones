@@ -22,7 +22,7 @@ nueva versión, la publicada anterior queda archivada y se puede auditar.
   complementarias y categorías aprobadas.
 - **Catálogo:** nombre, fotos, variantes, precio y disponibilidad. El agente
   vuelve a leer esos datos vigentes; no se deben duplicar manualmente en RAG.
-- **Nunca en RAG:** teléfonos, conversaciones, direcciones, GPS, comprobantes,
+- **Nunca en RAG:** teléfonos privados, conversaciones, domicilios de clientes, GPS, comprobantes,
   información bancaria, QR privados, secretos ni datos personales.
 
 ## Índice y escalabilidad
@@ -47,10 +47,22 @@ esa credencial no se replica en código, variables manuales ni documentación.
 
 ## Flujo de conversación
 
-Las acciones transaccionales (código de pedido, GPS, QR, imagen de comprobante)
-tienen prioridad. Una pregunta general se responde con RAG y el agente añade el
-recordatorio del siguiente paso del pedido. Solo una solicitud explícita del
-cliente cambia el chat a atención humana.
+El mensaje afirmativo de confirmación vincula el pedido; GPS y QR se ejecutan
+mediante acciones validadas del sistema. Una pregunta o una objeción se responde
+con RAG sin añadir siempre un recordatorio de pago o ubicación. Una respuesta
+breve como «sí» conserva el historial para interpretar la pregunta anterior.
+Solo una solicitud explícita del cliente cambia el chat a atención humana;
+una negación, una mención informativa o una hipótesis no autoriza la transferencia.
+
+El tono y las prioridades se publican desde `/comportamiento`. El modelo recibe
+la versión activa, las fuentes recuperadas para la consulta y las reglas
+protegidas. Publicar conocimiento aporta hechos; publicar el prompt cambia la
+forma de conversar. Ninguno de esos editores autoriza pagos ni envíos GPS/QR.
+
+La creación actual de pedidos usa `/api/catalog-orders` y la confirmación del
+cliente por WhatsApp. Desde esta liberación, la confirmación externa heredada
+`/api/order-confirmations` devuelve `410` con autenticación válida y no envía QR.
+Se conservaron sus tablas y reservas históricas.
 
 ## Punto de seguridad
 
