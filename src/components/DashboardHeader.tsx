@@ -39,7 +39,8 @@ export function DashboardHeader({ info, onTestConnection }: DashboardHeaderProps
           )}
         </div>
       </div>
-      <div className="flex items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2">
+        <Link href="/comportamiento" className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50">Comportamiento</Link>
         <Link href="/conocimiento" className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50">Base de conocimiento</Link>
         <button
           type="button"

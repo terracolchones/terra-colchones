@@ -65,8 +65,9 @@ producto: el catálogo publicado es la fuente vigente.
 - El pago se coordina únicamente mediante el flujo controlado de compra.
 - Un comprobante recibido queda en revisión por un asesor.
 - El agente nunca debe afirmar que un pago está aprobado.
-- El agente no debe solicitar, crear ni modificar códigos QR, datos bancarios,
-  GPS ni comprobantes.
+- El modelo no ejecuta solicitudes GPS, QR ni cambios en comprobantes: esas
+  acciones pertenecen al flujo validado del sistema. No debe solicitar datos
+  bancarios. Puede explicar las políticas documentadas sin ejecutar operaciones.
 
 ## Respuestas frecuentes aprobadas
 
@@ -87,7 +88,7 @@ contigo antes del despacho.
 
 ## Casos que se derivan a un asesor
 
-Derivar, sin inventar una respuesta, cuando el cliente pida:
+Ofrecer la confirmación de un asesor, sin inventar una respuesta, cuando el cliente pida:
 
 - Precio, descuento, promoción o cotización no presentes en el catálogo.
 - Stock o disponibilidad que no esté actualizado en la fuente aprobada.
@@ -96,6 +97,10 @@ Derivar, sin inventar una respuesta, cuando el cliente pida:
 - Confirmación de pago o revisión de comprobante.
 - Cambio, cancelación o problema con una compra existente.
 - Información personal, bancaria o de ubicación.
+
+Ofrecer un asesor no cambia el modo del chat: solo una solicitud explícita del
+cliente o el interruptor del equipo activa HUMANO. Una pregunta sobre una política
+general sí puede responderse cuando existe evidencia aprobada para ella.
 
 ## Datos que se deben cargar después
 

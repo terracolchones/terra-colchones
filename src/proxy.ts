@@ -32,6 +32,7 @@ export const config = {
   matcher: [
     "/",
     "/conocimiento/:path*",
+    "/comportamiento/:path*",
     "/catalogo/:path*",
     "/catalogo-admin/:path*",
     "/api/connection/status",
@@ -41,5 +42,6 @@ export const config = {
     "/api/payment-qr/:path*",
     "/api/catalog/admin/:path*",
     "/api/knowledge/:path*",
+    "/api/behavior/:path*",
   ],
 };

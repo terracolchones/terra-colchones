@@ -62,7 +62,7 @@ export const FALLBACK_KNOWLEDGE: KnowledgeChunk[] = [
   {
     id: "pagos",
     title: "Pagos y comprobantes",
-    content: "Un comprobante queda en revisión por un asesor. El agente no confirma pagos, no solicita GPS ni datos bancarios, y no crea ni modifica códigos QR.",
+    content: "Un comprobante queda en revisión por un asesor. El modelo no aprueba pagos ni ejecuta solicitudes GPS o envíos de QR: esas acciones pertenecen al flujo validado del sistema. No debe solicitar datos bancarios.",
   },
 ];
 

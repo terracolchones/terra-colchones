@@ -26,10 +26,10 @@ export function MessageBubble({ message }: MessageBubbleProps) {
       <div className={`max-w-[82%] rounded-2xl px-4 py-2.5 shadow-sm ${style}`}>
         <p className="whitespace-pre-wrap break-words text-sm leading-5">{message.content}</p>
         <div className={`mt-1 flex items-center gap-1 text-[10px] ${outgoing ? "justify-end" : "justify-start"} opacity-75`}>
-          {message.role === "assistant" ? "IA" : message.role === "human" ? "Humano" : "Cliente"}
+          {message.role === "assistant" ? "Automático" : message.role === "human" ? "Humano" : "Cliente"}
           <span>·</span>
           <span>{timestamp(message.created_at)}</span>
-          {failed && <span title="El mensaje no pudo enviarse a WhatsApp">⚠ No enviado</span>}
+          {failed && <span title="No hay confirmación local del envío; revisa su estado antes de intentar enviarlo otra vez">⚠ Envío sin confirmar</span>}
         </div>
       </div>
     </div>

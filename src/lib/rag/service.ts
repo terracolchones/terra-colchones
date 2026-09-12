@@ -22,7 +22,8 @@ import {
 
 const knowledgeFile = path.join(process.cwd(), "docs", "rag", "base-conocimiento-terra.md");
 let knowledgePromise: Promise<KnowledgeChunk[]> | undefined;
-let indexedSearchAvailable: boolean | undefined;
+const INDEX_RETRY_COOLDOWN_MS = 30_000;
+let indexedSearchRetryAfter = 0;
 
 export interface RagContext {
   context: string;
@@ -41,13 +42,18 @@ interface IndexedChunk {
 async function loadKnowledge(): Promise<KnowledgeChunk[]> {
   knowledgePromise ??= readFile(knowledgeFile, "utf8")
     .then((document) => {
+      const metadata = document.replace(/^\uFEFF/, "").match(/^---\s*\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/)?.[1];
+      if (metadata && /^\s*estado\s*:\s*["']?borrador["']?\s*(?:#.*)?$/im.test(metadata)) {
+        console.warn("[rag] La base local está en borrador; se utiliza únicamente el respaldo seguro.");
+        return FALLBACK_KNOWLEDGE;
+      }
       const chunks = parseKnowledgeBase(document);
       if (chunks.length > 0) return chunks;
       console.error("[rag] La base de conocimiento no contiene secciones recuperables; se usa el respaldo seguro.");
       return FALLBACK_KNOWLEDGE;
     })
-    .catch((error) => {
-      console.error("[rag] No se pudo leer docs/rag/base-conocimiento-terra.md; se usa el respaldo seguro.", error);
+    .catch(() => {
+      console.error("[rag] No se pudo leer la base local de conocimiento; se usa el respaldo seguro.");
       return FALLBACK_KNOWLEDGE;
     });
   return knowledgePromise;
@@ -90,37 +96,40 @@ function indexedChunk(value: unknown): IndexedChunk | null {
  * con su recuperación léxica segura, sin interrumpir WhatsApp.
  */
 async function searchIndexedKnowledge(query: string): Promise<IndexedChunk[] | null> {
-  if (!isCatalogConfigured() || indexedSearchAvailable === false) return null;
+  if (!isCatalogConfigured() || Date.now() < indexedSearchRetryAfter) return null;
   // Se activa después de desplegar las Edge Functions y el worker. Hasta ese
   // momento la misma RPC entrega FTS, sin depender de un proveedor externo.
   if (process.env.RAG_SEMANTIC_SEARCH_ENABLED === "true") {
-    const semantic = await getCatalogServerClient().functions.invoke("rag-search", { body: { query } });
+    const semantic = await getCatalogServerClient().functions.invoke("rag-search", { body: { query } })
+      .catch(() => ({ error: true, data: null }));
     if (!semantic.error && semantic.data && typeof semantic.data === "object") {
       const result = semantic.data as { results?: unknown };
       if (Array.isArray(result.results)) {
-        indexedSearchAvailable = true;
+        indexedSearchRetryAfter = 0;
         return result.results.map(indexedChunk).filter((item): item is IndexedChunk => item !== null);
       }
     }
     console.warn("[rag] La búsqueda semántica no está disponible; se usa FTS.");
   }
-  const { data, error } = await getCatalogServerClient().rpc("match_terra_rag_chunks", {
-    query_text: query,
-    query_embedding: null,
-    match_count: 8,
-  });
-  if (error) {
-    const detail = error.message || "";
-    if (/Could not find the function|relation .*rag_|schema cache/i.test(detail)) {
-      indexedSearchAvailable = false;
+  try {
+    const { data, error } = await getCatalogServerClient().rpc("match_terra_rag_chunks", {
+      query_text: query,
+      query_embedding: null,
+      match_count: 8,
+    });
+    if (error) {
+      indexedSearchRetryAfter = Date.now() + INDEX_RETRY_COOLDOWN_MS;
+      console.warn("[rag] El índice no está disponible; se usa la recuperación compatible y se volverá a intentar.");
       return null;
     }
-    console.error("[rag] El índice híbrido no respondió; se usa la recuperación compatible.", error);
+    indexedSearchRetryAfter = 0;
+    const rows: unknown[] = Array.isArray(data) ? data : [];
+    return rows.map(indexedChunk).filter((item): item is IndexedChunk => item !== null);
+  } catch {
+    indexedSearchRetryAfter = Date.now() + INDEX_RETRY_COOLDOWN_MS;
+    console.warn("[rag] La búsqueda no pudo completarse; se usa la recuperación compatible y se volverá a intentar.");
     return null;
   }
-  indexedSearchAvailable = true;
-  const rows: unknown[] = Array.isArray(data) ? data : [];
-  return rows.map(indexedChunk).filter((item): item is IndexedChunk => item !== null);
 }
 
 function sourceFromIndexedKnowledge(chunk: IndexedChunk): RetrievedSource {
@@ -172,8 +181,8 @@ export async function buildRagContext(
     return { context: formatRetrievedSources(sources), sources };
   }
 
-  const catalog = await getPublishedCatalogProductsForRag().catch((error) => {
-    console.error("[rag] No se pudo consultar el catálogo para esta respuesta.", error);
+  const catalog = await getPublishedCatalogProductsForRag().catch(() => {
+    console.error("[rag] No se pudo consultar el catálogo para esta respuesta.");
     return [];
   });
 

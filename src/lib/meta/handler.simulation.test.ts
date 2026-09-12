@@ -533,7 +533,7 @@ describe("D1-D5 safety regressions", () => {
     expect(serialized).not.toContain(privateMarker);
     expect(console.error).not.toHaveBeenCalled();
     expect(fixture.meta.sendTextMessage).toHaveBeenCalledExactlyOnceWith(
-      fixture.phone, "No pudimos consultar esa información ahora. Puedes explorar el catálogo o escribir “quiero hablar con un asesor”.",
+      fixture.phone, 'No pudimos consultar esa información ahora. Si prefieres atención humana, escribe "asesor".',
     );
   });
 });

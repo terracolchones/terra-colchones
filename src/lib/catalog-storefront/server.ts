@@ -77,8 +77,12 @@ function availability(value: unknown): ProductAvailability {
 }
 
 function price(value: unknown): number | null {
+  // Absent or invalid prices are not a published zero; retain that distinction
+  // before catalog facts are formatted as evidence for the agent.
+  if (typeof value !== "number" && typeof value !== "string") return null;
+  if (typeof value === "string" && !value.trim()) return null;
   const number = typeof value === "number" ? value : Number(value);
-  return Number.isFinite(number) ? number : null;
+  return Number.isFinite(number) && number >= 0 ? number : null;
 }
 
 function publicImageUrl(path: string): string {
