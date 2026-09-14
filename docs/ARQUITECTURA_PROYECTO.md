@@ -131,6 +131,7 @@ Antes del siguiente desarrollo se crearon estos puntos Git locales:
 | Catálogo | `codex/catalog-before-variant-galleries-20260910`         | `d98e53e`                                  |
 | Catálogo | `codex/catalog-before-simplified-variant-editor-20260910` | `dfe6bd9`                                  |
 | Catálogo | `codex/catalog-before-public-variant-pages-20260910`      | `3b065c4`                                  |
+| Catálogo | `codex/safety-before-catalog-availability-20260914` | `434cd8e` |
 
 Las ramas de trabajo son `codex/order-flow-catalog` y
 `codex/order-flow-agent`. Los cambios locales no confirmados ajenos a esta tarea

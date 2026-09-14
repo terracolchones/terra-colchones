@@ -6,6 +6,7 @@
 
 import { useCallback, useEffect, useId, useState } from "react";
 import { availabilityLabel } from "@/components/catalog/price";
+import { DEFAULT_NEW_PRODUCT_AVAILABILITY } from "@/lib/catalog-storefront/availability";
 import { normalizeColorHex } from "@/lib/catalog-storefront/color-variants";
 import type {
   CatalogHomeSettings,
@@ -72,7 +73,7 @@ function blankProduct(position: number): EditableProduct {
     specificationsText: "",
     priceFrom: "",
     compareAtPriceFrom: "",
-    availability: "coming_soon",
+    availability: DEFAULT_NEW_PRODUCT_AVAILABILITY,
     published: false,
     featured: false,
     sortOrder: String(position),

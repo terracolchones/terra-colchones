@@ -3,6 +3,7 @@ import "server-only";
 import crypto from "node:crypto";
 import { NextResponse, type NextRequest } from "next/server";
 import { DEFAULT_CATALOG_HOME } from "@/lib/catalog-storefront/demo";
+import { isProductAvailability } from "@/lib/catalog-storefront/availability";
 import { normalizeColorHex } from "@/lib/catalog-storefront/color-variants";
 import {
   CATALOG_BUCKET,
@@ -16,11 +17,6 @@ import type {
   ProductAvailability,
 } from "@/lib/catalog-storefront/types";
 
-const VALID_AVAILABILITY = new Set<ProductAvailability>([
-  "available",
-  "out_of_stock",
-  "coming_soon",
-]);
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const STORAGE_PATH_PATTERN =
@@ -139,12 +135,10 @@ function nonNegativeInteger(value: unknown, fallback: number): number {
 }
 
 function productAvailability(value: unknown): ProductAvailability {
-  if (
-    typeof value !== "string" ||
-    !VALID_AVAILABILITY.has(value as ProductAvailability)
-  )
-    return "coming_soon";
-  return value as ProductAvailability;
+  if (!isProductAvailability(value)) {
+    throw new CatalogRequestError("Selecciona una disponibilidad válida");
+  }
+  return value;
 }
 
 function stringList(value: unknown): string[] {
