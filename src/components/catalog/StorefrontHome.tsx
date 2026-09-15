@@ -16,6 +16,7 @@ interface StorefrontHomeProps {
   products: CatalogProduct[];
   home: CatalogHomeSettings;
   checkoutToken: string | null;
+  initialQuery: string;
 }
 
 function ProductCard({
@@ -61,8 +62,9 @@ export function StorefrontHome({
   products,
   home,
   checkoutToken,
+  initialQuery,
 }: StorefrontHomeProps) {
-  const [query, setQuery] = useState("");
+  const [query, setQuery] = useState(initialQuery);
   const [category, setCategory] = useState("Todos");
   const catalogHref = checkoutToken
     ? `/catalogo?checkout=${encodeURIComponent(checkoutToken)}`

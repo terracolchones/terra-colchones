@@ -73,6 +73,7 @@ export function ProductDetail({
     () => initialVariant(activeVariants, initialVariantId)?.id ?? null,
   );
   const [activeImage, setActiveImage] = useState(0);
+  const [catalogQuery, setCatalogQuery] = useState("");
   const galleryRef = useRef<HTMLDivElement>(null);
   const galleryPointerStartXRef = useRef<number | null>(null);
   const [orderReadyToConfirm, setOrderReadyToConfirm] = useState(false);
@@ -210,6 +211,15 @@ export function ProductDetail({
     );
   }
 
+  function searchCatalog(): void {
+    const params = new URLSearchParams();
+    const query = catalogQuery.trim();
+    if (query) params.set("q", query);
+    if (checkoutToken) params.set("checkout", checkoutToken);
+    const search = params.toString();
+    router.push(`/catalogo${search ? `?${search}` : ""}`);
+  }
+
   async function confirmOrder(): Promise<void> {
     if (confirmingOrder || !whatsAppPhone || unavailableMessage) return;
     setConfirmingOrder(true);
@@ -296,6 +306,45 @@ export function ProductDetail({
 
   return (
     <main className="min-h-dvh bg-white pb-24 text-stone-900 lg:pb-14">
+      <header className="sticky top-0 z-40 border-b border-stone-200/90 bg-white/95 px-4 py-2 backdrop-blur lg:hidden">
+        <div className="mx-auto flex max-w-5xl items-center gap-3">
+          <Link
+            href={`/catalogo${checkoutToken ? `?checkout=${encodeURIComponent(checkoutToken)}` : ""}`}
+            className="flex h-16 w-20 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-white focus-visible:outline-2 focus-visible:outline-offset-3 focus-visible:outline-[#8f1519]"
+            aria-label="Ir al catálogo Terra"
+          >
+            <img
+              src="/catalogo/logo.jpg"
+              alt="Terra Colchones y Muebles"
+              className="h-full w-full object-contain"
+            />
+          </Link>
+          <form
+            className="relative block min-w-0 flex-1"
+            onSubmit={(event) => {
+              event.preventDefault();
+              searchCatalog();
+            }}
+          >
+            <label>
+              <span className="sr-only">Buscar productos</span>
+              <span
+                className="pointer-events-none absolute inset-y-0 left-3 grid place-items-center text-stone-400"
+                aria-hidden="true"
+              >
+                ⌕
+              </span>
+              <input
+                value={catalogQuery}
+                onChange={(event) => setCatalogQuery(event.target.value)}
+                type="search"
+                placeholder="¿Qué estás buscando?"
+                className="h-11 w-full rounded-xl border border-stone-200 bg-stone-50 pl-9 pr-3 text-sm text-stone-900 outline-none transition placeholder:text-stone-400 focus:border-[#8f1519] focus:bg-white focus:ring-4 focus:ring-[#8f1519]/10"
+              />
+            </label>
+          </form>
+        </div>
+      </header>
       <div className="mx-auto max-w-3xl lg:max-w-[76rem] lg:px-6 lg:py-10">
         <Link
           href={`/catalogo${checkoutToken ? `?checkout=${encodeURIComponent(checkoutToken)}` : ""}`}
@@ -349,7 +398,7 @@ export function ProductDetail({
               </Link>
               {galleryImages.length > 1 && (
                 <div
-                  className="absolute inset-x-0 bottom-4 flex justify-center gap-1.5 lg:hidden"
+                  className="absolute bottom-4 left-1/2 z-10 flex -translate-x-1/2 items-center gap-0.5 rounded-full bg-stone-950/65 p-1 shadow-lg shadow-stone-950/25 backdrop-blur lg:hidden"
                   aria-label="Posición en la galería"
                 >
                   {galleryImages.map((image, index) => (
@@ -359,8 +408,12 @@ export function ProductDetail({
                       aria-label={`Ver imagen ${index + 1} de ${galleryImages.length}`}
                       aria-current={imageIndex === index ? "true" : undefined}
                       onClick={() => selectImage(index)}
-                      className={`size-2 rounded-full border border-white/70 shadow-sm transition focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#8f1519] ${imageIndex === index ? "bg-white" : "bg-white/50 hover:bg-white"}`}
-                    />
+                      className="grid size-7 place-items-center rounded-full focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
+                    >
+                      <span
+                        className={`h-2.5 rounded-full border border-white/70 shadow-sm transition-all ${imageIndex === index ? "w-7 bg-white" : "w-2.5 bg-white/60 hover:bg-white"}`}
+                      />
+                    </button>
                   ))}
                 </div>
               )}
