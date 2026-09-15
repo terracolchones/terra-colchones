@@ -5,7 +5,13 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useMemo, useState } from "react";
+import {
+  type PointerEvent as ReactPointerEvent,
+  type UIEvent,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
   availabilityLabel,
   formatBolivianos,
@@ -67,6 +73,8 @@ export function ProductDetail({
     () => initialVariant(activeVariants, initialVariantId)?.id ?? null,
   );
   const [activeImage, setActiveImage] = useState(0);
+  const galleryRef = useRef<HTMLDivElement>(null);
+  const galleryPointerStartXRef = useRef<number | null>(null);
   const [orderReadyToConfirm, setOrderReadyToConfirm] = useState(false);
   const [confirmingOrder, setConfirmingOrder] = useState(false);
   const [orderError, setOrderError] = useState<string | null>(null);
@@ -113,6 +121,47 @@ export function ProductDetail({
     ? (selectedVariant.colorName ?? selectedVariant.colorHex)
     : null;
 
+  function selectImage(index: number): void {
+    const nextIndex = Math.min(
+      Math.max(0, index),
+      Math.max(0, galleryImages.length - 1),
+    );
+    setActiveImage(nextIndex);
+    const gallery = galleryRef.current;
+    if (!gallery) return;
+    gallery.scrollTo({
+      left: gallery.clientWidth * nextIndex,
+      behavior: "smooth",
+    });
+  }
+
+  function updateActiveImageFromScroll(event: UIEvent<HTMLDivElement>): void {
+    const gallery = event.currentTarget;
+    if (gallery.clientWidth === 0) return;
+    const imageIndexFromScroll = Math.min(
+      Math.max(0, Math.round(gallery.scrollLeft / gallery.clientWidth)),
+      Math.max(0, galleryImages.length - 1),
+    );
+    if (imageIndexFromScroll !== activeImage) {
+      setActiveImage(imageIndexFromScroll);
+    }
+  }
+
+  function startGallerySwipe(event: ReactPointerEvent<HTMLDivElement>): void {
+    if (event.pointerType === "touch") {
+      galleryPointerStartXRef.current = event.clientX;
+    }
+  }
+
+  function finishGallerySwipe(event: ReactPointerEvent<HTMLDivElement>): void {
+    const startX = galleryPointerStartXRef.current;
+    galleryPointerStartXRef.current = null;
+    if (event.pointerType !== "touch" || startX === null) return;
+    const distance = startX - event.clientX;
+    if (Math.abs(distance) < 40) return;
+    selectImage(imageIndex + (distance > 0 ? 1 : -1));
+  }
+
   function resetOrderConfirmation(): void {
     setOrderReadyToConfirm(false);
     setOrderError(null);
@@ -122,6 +171,7 @@ export function ProductDetail({
     if (!next) return;
     setSelectedVariantId(next.id);
     setActiveImage(0);
+    galleryRef.current?.scrollTo({ left: 0, behavior: "auto" });
     resetOrderConfirmation();
     const query = checkoutToken
       ? `?checkout=${encodeURIComponent(checkoutToken)}`
@@ -258,14 +308,15 @@ export function ProductDetail({
           <div className="min-w-0">
             <section className="relative h-[68svh] min-h-[20rem] max-h-[44rem] overflow-hidden bg-stone-100 sm:mx-auto sm:mt-4 sm:h-auto sm:min-h-0 sm:max-w-[31rem] sm:rounded-[1.65rem] lg:mx-0 lg:mt-0 lg:max-w-none lg:rounded-[1.5rem]">
               <div
-                className="flex h-full snap-x snap-mandatory overflow-x-auto scroll-smooth lg:hidden"
-                onScroll={(event) => {
-                  const width = event.currentTarget.clientWidth;
-                  if (width)
-                    setActiveImage(
-                      Math.round(event.currentTarget.scrollLeft / width),
-                    );
+                ref={galleryRef}
+                className="flex h-full snap-x snap-mandatory overflow-x-auto overscroll-x-contain scroll-smooth touch-pan-y [scrollbar-width:none] [&::-webkit-scrollbar]:hidden lg:hidden"
+                onPointerDown={startGallerySwipe}
+                onPointerUp={finishGallerySwipe}
+                onPointerCancel={() => {
+                  galleryPointerStartXRef.current = null;
                 }}
+                onScroll={updateActiveImageFromScroll}
+                aria-label="Galería de imágenes del producto"
               >
                 {(galleryImages.length > 0 ? galleryImages : [null]).map(
                   (image) => (
@@ -302,9 +353,13 @@ export function ProductDetail({
                   aria-label="Posición en la galería"
                 >
                   {galleryImages.map((image, index) => (
-                    <span
+                    <button
                       key={image.id}
-                      className={`size-2 rounded-full border border-white/70 shadow-sm ${imageIndex === index ? "bg-white" : "bg-white/50"}`}
+                      type="button"
+                      aria-label={`Ver imagen ${index + 1} de ${galleryImages.length}`}
+                      aria-current={imageIndex === index ? "true" : undefined}
+                      onClick={() => selectImage(index)}
+                      className={`size-2 rounded-full border border-white/70 shadow-sm transition focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#8f1519] ${imageIndex === index ? "bg-white" : "bg-white/50 hover:bg-white"}`}
                     />
                   ))}
                 </div>
@@ -321,7 +376,7 @@ export function ProductDetail({
                     type="button"
                     aria-label={`Ver imagen ${index + 1}`}
                     aria-pressed={activeImage === index}
-                    onClick={() => setActiveImage(index)}
+                    onClick={() => selectImage(index)}
                     className={`aspect-square overflow-hidden rounded-xl border-2 bg-stone-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#8f1519] ${activeImage === index ? "border-[#8f1519]" : "border-transparent hover:border-stone-300"}`}
                   >
                     <img
