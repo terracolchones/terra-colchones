@@ -396,11 +396,16 @@ export function ProductDetail({
               >
                 ‹
               </Link>
-              {galleryImages.length > 1 && (
-                <div
-                  className="absolute bottom-4 left-1/2 z-10 flex -translate-x-1/2 items-center gap-0.5 rounded-full bg-stone-950/65 p-1 shadow-lg shadow-stone-950/25 backdrop-blur lg:hidden"
-                  aria-label="Posición en la galería"
-                >
+            </section>
+            {galleryImages.length > 1 && (
+              <div
+                className="flex items-center justify-center gap-2 py-2 lg:hidden"
+                aria-label="Posición en la galería"
+              >
+                <span className="min-w-9 text-right text-[11px] font-semibold tabular-nums tracking-wide text-stone-500">
+                  {imageIndex + 1} / {galleryImages.length}
+                </span>
+                <div className="flex items-center">
                   {galleryImages.map((image, index) => (
                     <button
                       key={image.id}
@@ -408,16 +413,16 @@ export function ProductDetail({
                       aria-label={`Ver imagen ${index + 1} de ${galleryImages.length}`}
                       aria-current={imageIndex === index ? "true" : undefined}
                       onClick={() => selectImage(index)}
-                      className="grid size-7 place-items-center rounded-full focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
+                      className="grid size-9 place-items-center rounded-full focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#8f1519]"
                     >
                       <span
-                        className={`h-2.5 rounded-full border border-white/70 shadow-sm transition-all ${imageIndex === index ? "w-7 bg-white" : "w-2.5 bg-white/60 hover:bg-white"}`}
+                        className={`h-1.5 rounded-full transition-all ${imageIndex === index ? "w-6 bg-[#8f1519]" : "w-1.5 bg-stone-300 hover:bg-stone-500"}`}
                       />
                     </button>
                   ))}
                 </div>
-              )}
-            </section>
+              </div>
+            )}
             {galleryImages.length > 1 && (
               <div
                 className="mt-3 hidden grid-cols-3 gap-3 lg:grid"
