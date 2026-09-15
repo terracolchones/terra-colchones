@@ -355,7 +355,7 @@ export function ProductDetail({
         </Link>
         <div className="lg:mt-5 lg:grid lg:grid-cols-[minmax(0,1fr)_minmax(0,0.94fr)] lg:items-start lg:gap-12 xl:gap-16">
           <div className="min-w-0">
-            <section className="relative aspect-square w-full overflow-hidden bg-stone-100 sm:mx-auto sm:mt-4 sm:max-w-[31rem] sm:rounded-[1.65rem] lg:h-[68svh] lg:min-h-[20rem] lg:max-h-[44rem] lg:aspect-auto lg:mx-0 lg:mt-0 lg:max-w-none lg:rounded-[1.5rem]">
+            <section className="relative aspect-square w-full overflow-hidden bg-stone-100 sm:mx-auto sm:mt-4 sm:max-w-[31rem] sm:rounded-[1.65rem] lg:mx-0 lg:mt-0 lg:max-w-none lg:rounded-[1.5rem]">
               <div
                 ref={galleryRef}
                 className="flex h-full snap-x snap-mandatory overflow-x-auto overscroll-x-contain scroll-smooth touch-pan-y [scrollbar-width:none] [&::-webkit-scrollbar]:hidden lg:hidden"
