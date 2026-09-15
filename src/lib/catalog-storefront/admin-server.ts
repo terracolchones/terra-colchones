@@ -24,7 +24,7 @@ const STORAGE_PATH_PATTERN =
 const VARIANT_STORAGE_PATH_PATTERN =
   /^products\/[0-9a-f-]{36}\/variants\/[0-9a-f-]{36}\/[a-zA-Z0-9_-]{1,128}\.(png|jpe?g|webp)$/;
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
-const MAX_GALLERY_IMAGES = 3;
+const MAX_GALLERY_IMAGES = 5;
 
 export class CatalogRequestError extends Error {
   constructor(
@@ -205,7 +205,7 @@ export function parseProductInput(payload: unknown): ProductInput {
     throw new CatalogRequestError("El producto tiene demasiadas variantes");
   if (rawImages.length > MAX_GALLERY_IMAGES)
     throw new CatalogRequestError(
-      "El producto puede tener como máximo 3 fotos",
+      `El producto puede tener como máximo ${MAX_GALLERY_IMAGES} fotos`,
     );
 
   const variants = rawVariants.map((item, index) => {
@@ -220,7 +220,7 @@ export function parseProductInput(payload: unknown): ProductInput {
       : [];
     if (rawVariantImages.length > MAX_GALLERY_IMAGES)
       throw new CatalogRequestError(
-        "Una variante puede tener como máximo 3 fotos",
+        `Una variante puede tener como máximo ${MAX_GALLERY_IMAGES} fotos`,
       );
     const showColor = variant.showColor === true;
     const showOptionText = variant.showOptionText !== false;
@@ -659,7 +659,9 @@ export async function uploadCatalogImage(
     .eq("product_id", productId);
   if (countError) throw new Error(countError.message);
   if ((count ?? 0) >= MAX_GALLERY_IMAGES)
-    throw new CatalogRequestError("El producto ya tiene el máximo de 3 fotos");
+    throw new CatalogRequestError(
+      `El producto ya tiene el máximo de ${MAX_GALLERY_IMAGES} fotos`,
+    );
   const { mimeType, extension } = imageMimeType(file);
   const path = `products/${productId}/${crypto.randomUUID()}.${extension}`;
   const bytes = Buffer.from(await file.arrayBuffer());
@@ -713,7 +715,9 @@ export async function uploadCatalogVariantImage(
     .eq("variant_id", variantId);
   if (countError) throw new Error(countError.message);
   if ((count ?? 0) >= MAX_GALLERY_IMAGES)
-    throw new CatalogRequestError("La variante ya tiene el máximo de 3 fotos");
+    throw new CatalogRequestError(
+      `La variante ya tiene el máximo de ${MAX_GALLERY_IMAGES} fotos`,
+    );
   const { mimeType, extension } = imageMimeType(file);
   const path = `products/${productId}/variants/${variantId}/${crypto.randomUUID()}.${extension}`;
   const bytes = Buffer.from(await file.arrayBuffer());

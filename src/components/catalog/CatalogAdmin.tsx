@@ -16,7 +16,7 @@ import type {
   ProductAvailability,
 } from "@/lib/catalog-storefront/types";
 
-const MAX_GALLERY_IMAGES = 3;
+const MAX_GALLERY_IMAGES = 5;
 type EditableImage = Omit<CatalogImage, "id" | "url"> & {
   id?: string;
   url?: string;
@@ -106,6 +106,29 @@ function editableProduct(product: CatalogProduct): EditableProduct {
     })),
     images: product.images.map((image) => ({ ...image })),
   };
+}
+
+function moveImage(
+  images: EditableImage[],
+  index: number,
+  direction: -1 | 1,
+): EditableImage[] {
+  const destination = index + direction;
+  if (destination < 0 || destination >= images.length) return images;
+  const reordered = [...images];
+  const [image] = reordered.splice(index, 1);
+  reordered.splice(destination, 0, image);
+  return reordered.map((item, sortOrder) => ({
+    ...item,
+    sortOrder: sortOrder + 1,
+  }));
+}
+
+function orderImages(images: EditableImage[]): EditableImage[] {
+  return images.map((image, sortOrder) => ({
+    ...image,
+    sortOrder: sortOrder + 1,
+  }));
 }
 
 function blankVariant(product: EditableProduct): EditableVariant {
@@ -230,6 +253,7 @@ function PhotoDropzone({
   images,
   onUpload,
   onRemove,
+  onMove,
   disabledMessage,
   uploading,
 }: {
@@ -238,6 +262,7 @@ function PhotoDropzone({
   images: EditableImage[];
   onUpload: (files: File[]) => void;
   onRemove: (index: number) => void;
+  onMove: (index: number, direction: -1 | 1) => void;
   disabledMessage?: string;
   uploading: boolean;
 }) {
@@ -262,6 +287,11 @@ function PhotoDropzone({
           <p className="mt-1 max-w-xl text-xs leading-4 text-slate-500">
             {description}
           </p>
+          {images.length > 1 && (
+            <p className="mt-1 text-xs leading-4 text-slate-500">
+              Usa las flechas para ordenar las fotos. La primera es la portada.
+            </p>
+          )}
         </div>
         <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-600">
           {images.length}/{MAX_GALLERY_IMAGES} fotos
@@ -317,40 +347,66 @@ function PhotoDropzone({
           </label>
         ) : (
           <div className="grid min-h-28 place-items-center px-4 text-center text-sm leading-5 text-slate-500">
-            {disabledMessage ?? "Ya llegaste al máximo de tres fotos."}
+            {disabledMessage ??
+              `Ya llegaste al máximo de ${MAX_GALLERY_IMAGES} fotos.`}
           </div>
         )}
         {images.length > 0 && (
-          <div className="mt-3 grid grid-cols-3 gap-2 sm:gap-3">
+          <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3 sm:gap-3 xl:grid-cols-5">
             {images.map((image, index) => (
               <div
                 key={image.id ?? image.path}
-                className="relative aspect-square overflow-hidden rounded-xl border border-slate-200 bg-white"
+                className="min-w-0"
               >
-                {image.url ? (
-                  <img
-                    src={image.url}
-                    alt={image.alt}
-                    className="size-full object-cover"
-                  />
-                ) : (
-                  <div className="grid size-full place-items-center text-xs text-slate-500">
-                    Foto {index + 1}
-                  </div>
-                )}
-                <button
-                  type="button"
-                  onClick={() => onRemove(index)}
-                  aria-label={`Quitar foto ${index + 1}`}
-                  className="absolute right-1.5 top-1.5 grid size-7 place-items-center rounded-full bg-white/95 text-base font-bold text-rose-700 shadow-sm"
-                >
-                  ×
-                </button>
-                {index === 0 && (
-                  <span className="absolute bottom-1.5 left-1.5 rounded-md bg-slate-950/75 px-1.5 py-0.5 text-[10px] font-bold text-white">
-                    Portada
+                <div className="relative aspect-square overflow-hidden rounded-xl border border-slate-200 bg-white">
+                  {image.url ? (
+                    <img
+                      src={image.url}
+                      alt={image.alt}
+                      className="size-full object-cover"
+                    />
+                  ) : (
+                    <div className="grid size-full place-items-center text-xs text-slate-500">
+                      Foto {index + 1}
+                    </div>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => onRemove(index)}
+                    aria-label={`Quitar foto ${index + 1}`}
+                    className="absolute right-1.5 top-1.5 grid size-7 place-items-center rounded-full bg-white/95 text-base font-bold text-rose-700 shadow-sm"
+                  >
+                    ×
+                  </button>
+                  {index === 0 && (
+                    <span className="absolute bottom-1.5 left-1.5 rounded-md bg-slate-950/75 px-1.5 py-0.5 text-[10px] font-bold text-white">
+                      Portada
+                    </span>
+                  )}
+                </div>
+                <div className="mt-1 flex items-center justify-between gap-1">
+                  <button
+                    type="button"
+                    onClick={() => onMove(index, -1)}
+                    disabled={index === 0}
+                    aria-label={`Mover foto ${index + 1} a la izquierda`}
+                    className="grid size-8 place-items-center rounded-lg border border-slate-200 bg-white text-sm font-bold text-slate-700 transition hover:border-[#8f1519] hover:text-[#8f1519] disabled:cursor-not-allowed disabled:opacity-35"
+                  >
+                    ←
+                  </button>
+                  <span className="text-[11px] font-semibold tabular-nums text-slate-500">
+                    {index + 1} de {images.length}
                   </span>
-                )}
+                  <button
+                    type="button"
+                    onClick={() => onMove(index, 1)}
+                    disabled={index === images.length - 1}
+                    aria-label={`Mover foto ${index + 1} a la derecha`}
+                    className="grid size-8 place-items-center rounded-lg border border-slate-200 bg-white text-sm font-bold text-slate-700 transition hover:border-[#8f1519] hover:text-[#8f1519] disabled:cursor-not-allowed disabled:opacity-35"
+                  >
+                    →
+                  </button>
+                </div>
               </div>
             ))}
           </div>
@@ -587,12 +643,17 @@ function ProductEditor({
         onRemove={(index) =>
           update(
             "images",
-            product.images.filter((_, imageIndex) => imageIndex !== index),
+            orderImages(
+              product.images.filter((_, imageIndex) => imageIndex !== index),
+            ),
           )
+        }
+        onMove={(index, direction) =>
+          update("images", moveImage(product.images, index, direction))
         }
         disabledMessage={
           !product.id
-            ? "Guarda primero el producto para poder subir sus tres fotos."
+            ? `Guarda primero el producto para poder subir sus ${MAX_GALLERY_IMAGES} fotos.`
             : undefined
         }
         uploading={uploading}
@@ -645,7 +706,7 @@ function ProductEditor({
                     </span>
                     <span className="mt-0.5 block text-xs text-slate-500">
                       {variant.isPrimary ? "Versión principal · " : ""}
-                      {variant.images.length}/3 fotos · Bs{" "}
+                      {variant.images.length}/{MAX_GALLERY_IMAGES} fotos · Bs{" "}
                       {variant.price === "" ? "sin precio" : variant.price}
                       <br />/{variant.slug || "URL automática"}
                     </span>
@@ -911,20 +972,28 @@ function VariantEditor({
       </section>
       <PhotoDropzone
         title="Fotos de esta variante"
-        description="Opcionales, máximo tres. Si queda vacía, el cliente verá las fotos generales de respaldo de la familia."
+        description={`Opcionales, máximo ${MAX_GALLERY_IMAGES}. Si queda vacía, el cliente verá las fotos generales de respaldo de la familia.`}
         images={variant.images}
         onUpload={onUploadImages}
         onRemove={(index) =>
           onChange({
             ...variant,
-            images: variant.images.filter(
-              (_, imageIndex) => imageIndex !== index,
+            images: orderImages(
+              variant.images.filter(
+                (_, imageIndex) => imageIndex !== index,
+              ),
             ),
+          })
+        }
+        onMove={(index, direction) =>
+          onChange({
+            ...variant,
+            images: moveImage(variant.images, index, direction),
           })
         }
         disabledMessage={
           !variant.id
-            ? "Guarda esta variante para poder subir sus tres fotos."
+            ? `Guarda esta variante para poder subir sus ${MAX_GALLERY_IMAGES} fotos.`
             : undefined
         }
         uploading={uploading}
