@@ -38,7 +38,7 @@ function ProductCard({
       href={`/catalogo/productos/${encodeURIComponent(publicSlug)}${checkoutToken ? `?checkout=${encodeURIComponent(checkoutToken)}` : ""}`}
       className="group flex min-w-0 flex-col overflow-hidden rounded-[1.35rem] border border-stone-200 bg-white shadow-[0_10px_26px_rgba(30,20,12,0.06)] transition hover:-translate-y-0.5 hover:shadow-[0_16px_30px_rgba(30,20,12,0.1)] focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[#8f1519]"
     >
-      <div className="relative aspect-[4/5] overflow-hidden bg-stone-100">
+      <div className="relative aspect-square overflow-hidden bg-stone-100">
         <ProductVisual product={product} imageUrl={image} compact />
         {product.availability !== "available" && (
           <span className="absolute left-2 top-2 rounded-full bg-white/90 px-2 py-1 text-[10px] font-bold text-stone-700 shadow-sm backdrop-blur">
