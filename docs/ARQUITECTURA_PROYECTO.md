@@ -68,6 +68,14 @@ internos, teléfonos ni acceso a SQLite.
 
 ## Propiedad de los datos
 
+El acortador pertenece al catálogo: `/catalogo-admin` incluye creación, historial,
+copia y eliminación de enlaces públicos `/<código>`. La ficha corta reutiliza
+`ProductDetail` y conserva la versión de producto seleccionada. Su mapa de
+identidades se guarda en `catalog_short_links` de Supabase, solo desde servidor.
+Eliminar un enlace conserva su código reservado y no modifica el producto, sus
+variantes ni el contrato de pedidos con WhatsApp. Activación y recuperación:
+[Acortador del catálogo](ACORTADOR_CATALOGO.md).
+
 - El catálogo obtiene productos y variantes desde su almacenamiento de catálogo.
 - El agente conserva la conversación, el pedido asociado, las transiciones de
   estado y los envíos de WhatsApp.

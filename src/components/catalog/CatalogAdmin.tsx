@@ -5,6 +5,7 @@
 /* eslint-disable @next/next/no-img-element */
 
 import { useCallback, useEffect, useId, useState } from "react";
+import { CatalogShortener } from "@/components/catalog/CatalogShortener";
 import { availabilityLabel } from "@/components/catalog/price";
 import { DEFAULT_NEW_PRODUCT_AVAILABILITY } from "@/lib/catalog-storefront/availability";
 import { normalizeColorHex } from "@/lib/catalog-storefront/color-variants";
@@ -1078,7 +1079,7 @@ function CatalogAdminDashboard({
     null,
   );
   const [home, setHome] = useState<CatalogHomeSettings | null>(null);
-  const [section, setSection] = useState<"products" | "home">("products");
+  const [section, setSection] = useState<"products" | "home" | "short-links">("products");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -1417,6 +1418,10 @@ function CatalogAdminDashboard({
           >
             Portada pública
           </button>
+          <button type="button" onClick={() => setSection("short-links")}
+            className={`mt-1 w-full rounded-xl px-3 py-2.5 text-left text-sm font-semibold ${section === "short-links" ? "bg-[#8f1519] text-white" : "text-slate-700 hover:bg-slate-100"}`}>
+            Acortador de enlaces
+          </button>
           {section === "products" && (
             <>
               <div className="my-3 border-t border-slate-100" />
@@ -1460,7 +1465,9 @@ function CatalogAdminDashboard({
               {notice}
             </p>
           )}
-          {loading ? (
+          {section === "short-links" ? (
+            <CatalogShortener password={password} />
+          ) : loading ? (
             <div className="grid min-h-80 place-items-center text-sm text-slate-500">
               Cargando catálogo…
             </div>
