@@ -346,6 +346,15 @@ export function ProductDetail({
         </div>
       </header>
       <div className="mx-auto max-w-3xl lg:max-w-[76rem] lg:px-6 lg:py-10">
+        <div className="px-4 py-2 lg:hidden">
+          <Link
+            href={`/catalogo${checkoutToken ? `?checkout=${encodeURIComponent(checkoutToken)}` : ""}`}
+            className="grid size-9 place-items-center rounded-xl border border-stone-200 bg-white text-lg font-semibold text-[#8f1519] shadow-sm transition hover:border-[#8f1519]/40 hover:bg-rose-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#8f1519]"
+            aria-label="Volver al catálogo"
+          >
+            <span aria-hidden="true">←</span>
+          </Link>
+        </div>
         <Link
           href={`/catalogo${checkoutToken ? `?checkout=${encodeURIComponent(checkoutToken)}` : ""}`}
           className="hidden items-center gap-2 text-sm font-semibold text-[#8f1519] transition hover:text-[#741115] focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[#8f1519] lg:inline-flex"
@@ -389,38 +398,51 @@ export function ProductDetail({
                   alt={galleryImages[imageIndex]?.alt ?? selectedName}
                 />
               </div>
-              <Link
-                href={`/catalogo${checkoutToken ? `?checkout=${encodeURIComponent(checkoutToken)}` : ""}`}
-                className="absolute left-4 top-4 grid size-11 place-items-center rounded-full bg-white/90 text-2xl text-stone-900 shadow-sm backdrop-blur transition hover:bg-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#8f1519] lg:hidden"
-                aria-label="Volver al catálogo"
-              >
-                ‹
-              </Link>
             </section>
             {galleryImages.length > 1 && (
               <div
-                className="flex items-center justify-center gap-2 py-2 lg:hidden"
+                className="flex items-center justify-between gap-2 px-4 py-2 lg:hidden"
                 aria-label="Posición en la galería"
               >
-                <span className="min-w-9 text-right text-[11px] font-semibold tabular-nums tracking-wide text-stone-500">
-                  {imageIndex + 1} / {galleryImages.length}
-                </span>
-                <div className="flex items-center">
-                  {galleryImages.map((image, index) => (
-                    <button
-                      key={image.id}
-                      type="button"
-                      aria-label={`Ver imagen ${index + 1} de ${galleryImages.length}`}
-                      aria-current={imageIndex === index ? "true" : undefined}
-                      onClick={() => selectImage(index)}
-                      className="grid size-9 place-items-center rounded-full focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#8f1519]"
-                    >
-                      <span
-                        className={`h-1.5 rounded-full transition-all ${imageIndex === index ? "w-6 bg-[#8f1519]" : "w-1.5 bg-stone-300 hover:bg-stone-500"}`}
-                      />
-                    </button>
-                  ))}
+                <button
+                  type="button"
+                  onClick={() => selectImage(imageIndex - 1)}
+                  disabled={imageIndex === 0}
+                  aria-label="Ver imagen anterior"
+                  className="grid size-9 place-items-center rounded-xl border border-stone-200 bg-white text-xl font-semibold text-stone-700 shadow-sm transition hover:border-[#8f1519]/40 hover:text-[#8f1519] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#8f1519] disabled:cursor-not-allowed disabled:opacity-35"
+                >
+                  ‹
+                </button>
+                <div className="flex items-center gap-2">
+                  <span className="min-w-9 text-right text-[11px] font-semibold tabular-nums tracking-wide text-stone-500">
+                    {imageIndex + 1} / {galleryImages.length}
+                  </span>
+                  <div className="flex items-center">
+                    {galleryImages.map((image, index) => (
+                      <button
+                        key={image.id}
+                        type="button"
+                        aria-label={`Ver imagen ${index + 1} de ${galleryImages.length}`}
+                        aria-current={imageIndex === index ? "true" : undefined}
+                        onClick={() => selectImage(index)}
+                        className="grid size-9 place-items-center rounded-full focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#8f1519]"
+                      >
+                        <span
+                          className={`h-1.5 rounded-full transition-all ${imageIndex === index ? "w-6 bg-[#8f1519]" : "w-1.5 bg-stone-300 hover:bg-stone-500"}`}
+                        />
+                      </button>
+                    ))}
+                  </div>
                 </div>
+                <button
+                  type="button"
+                  onClick={() => selectImage(imageIndex + 1)}
+                  disabled={imageIndex === galleryImages.length - 1}
+                  aria-label="Ver imagen siguiente"
+                  className="grid size-9 place-items-center rounded-xl border border-stone-200 bg-white text-xl font-semibold text-stone-700 shadow-sm transition hover:border-[#8f1519]/40 hover:text-[#8f1519] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#8f1519] disabled:cursor-not-allowed disabled:opacity-35"
+                >
+                  ›
+                </button>
               </div>
             )}
             {galleryImages.length > 1 && (
