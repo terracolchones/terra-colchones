@@ -4,6 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { createPublicOrderCode, normalizePublicOrderCode } from "@/lib/order-code";
 import { catalogDeliveryReservationState } from "@/lib/catalog-delivery-reservation-policy";
+import { readDashboardMessagePage, type DashboardHistoryOptions } from "@/lib/dashboard-history";
 
 export type ConversationMode = "AI" | "HUMAN";
 export type MessageRole = "user" | "assistant" | "human";
@@ -638,6 +639,10 @@ export function updateMessageWaId(messageId: number, waMessageId: string): void 
   }
   const db = getDatabase();
   db.prepare("UPDATE messages SET wa_message_id = ? WHERE id = ?").run(waMessageId, messageId);
+}
+
+export function getDashboardMessagePage(conversationId: number, options: DashboardHistoryOptions = {}) {
+  return readDashboardMessagePage(getDatabase(), asPositiveId(conversationId), options);
 }
 
 export function getMessages(conversationId: number, limit = 50): Message[] {

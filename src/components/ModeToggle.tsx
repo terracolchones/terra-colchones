@@ -15,6 +15,7 @@ export function ModeToggle({ mode, disabled = false, onChange }: ModeToggleProps
         type="button"
         disabled={disabled}
         onClick={() => onChange("AI")}
+        aria-pressed={mode === "AI"}
         className={`rounded-md px-3 py-1.5 text-xs font-bold transition disabled:cursor-not-allowed disabled:opacity-50 ${
           mode === "AI" ? "bg-emerald-600 text-white shadow-sm" : "text-slate-500 hover:text-slate-800"
         }`}
@@ -25,6 +26,7 @@ export function ModeToggle({ mode, disabled = false, onChange }: ModeToggleProps
         type="button"
         disabled={disabled}
         onClick={() => onChange("HUMAN")}
+        aria-pressed={mode === "HUMAN"}
         className={`rounded-md px-3 py-1.5 text-xs font-bold transition disabled:cursor-not-allowed disabled:opacity-50 ${
           mode === "HUMAN" ? "bg-amber-500 text-slate-950 shadow-sm" : "text-slate-500 hover:text-slate-800"
         }`}

@@ -14,19 +14,14 @@ function timestamp(seconds: number): string {
 export function MessageBubble({ message }: MessageBubbleProps) {
   const outgoing = message.role !== "user";
   const failed = outgoing && !message.wa_message_id;
-  const style =
-    message.role === "assistant"
-      ? "bg-emerald-600 text-white"
-      : message.role === "human"
-        ? "bg-amber-300 text-amber-950"
-        : "border border-slate-200 bg-white text-slate-800";
+  const style = outgoing ? "rounded-tr-sm bg-[#d9fdd3] text-[#172b25]" : "rounded-tl-sm bg-white text-[#172b25]";
 
   return (
-    <div className={`flex ${outgoing ? "justify-end" : "justify-start"}`}>
-      <div className={`max-w-[82%] rounded-2xl px-4 py-2.5 shadow-sm ${style}`}>
-        <p className="whitespace-pre-wrap break-words text-sm leading-5">{message.content}</p>
-        <div className={`mt-1 flex items-center gap-1 text-[10px] ${outgoing ? "justify-end" : "justify-start"} opacity-75`}>
-          {message.role === "assistant" ? "Automático" : message.role === "human" ? "Humano" : "Cliente"}
+    <div data-message-id={message.id} className={`flex ${outgoing ? "justify-end" : "justify-start"}`}>
+      <div className={`min-w-0 max-w-[92%] rounded-xl px-3.5 py-2 shadow-sm sm:max-w-[78%] ${style}`}>
+        <p className="whitespace-pre-wrap text-sm leading-6 [overflow-wrap:anywhere]">{message.content}</p>
+        <div className="mt-1 flex flex-wrap items-center justify-end gap-1 text-[11px] text-[#52695f]">
+          {message.role === "assistant" ? "IA" : message.role === "human" ? "Asesor" : "Cliente"}
           <span>·</span>
           <span>{timestamp(message.created_at)}</span>
           {failed && <span title="No hay confirmación local del envío; revisa su estado antes de intentar enviarlo otra vez">⚠ Envío sin confirmar</span>}

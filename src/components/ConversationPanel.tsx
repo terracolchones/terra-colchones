@@ -1,19 +1,17 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { MessageBubble } from "@/components/MessageBubble";
 import { ModeToggle } from "@/components/ModeToggle";
 import type { ConversationMode, ConversationView, MessageView } from "@/components/types";
+import { useConversationMessages, type HistoryChange } from "@/components/useConversationMessages";
+import { compareMessages, isNearMessageEnd, whatsappContactUrl } from "@/lib/message-history";
 
 interface ConversationPanelProps {
   conversation: ConversationView;
   onConversationChanged: () => Promise<void>;
   onDelete: (id: number) => Promise<void>;
-}
-
-interface MessagesResponse {
-  conversation: ConversationView;
-  messages: MessageView[];
+  onBack?: () => void;
 }
 
 const ORDER_STATUS_LABEL: Record<NonNullable<ConversationView["latest_order"]>["status"], string> = {
@@ -24,34 +22,73 @@ const ORDER_STATUS_LABEL: Record<NonNullable<ConversationView["latest_order"]>["
   payment_confirmed: "Pago confirmado",
 };
 
-export function ConversationPanel({ conversation, onConversationChanged, onDelete }: ConversationPanelProps) {
-  const [messages, setMessages] = useState<MessageView[]>([]);
+export function ConversationPanel({ conversation, onConversationChanged, onDelete, onBack }: ConversationPanelProps) {
   const [draft, setDraft] = useState("");
   const [savingMode, setSavingMode] = useState(false);
   const [sending, setSending] = useState(false);
   const [sendingQr, setSendingQr] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const messageEndRef = useRef<HTMLDivElement>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const pendingScroll = useRef<{ follow: boolean; anchor: string | null; offset: number; scrollTop: number } | null>(null);
+  const [awayFromEnd, setAwayFromEnd] = useState(false);
+  const [unread, setUnread] = useState(0);
+  const whatsappUrl = whatsappContactUrl(conversation.phone);
 
-  const loadMessages = useCallback(async () => {
-    const response = await fetch(`/api/messages/${conversation.id}`, { cache: "no-store" });
-    if (!response.ok) return;
-    const data = (await response.json()) as MessagesResponse;
-    setMessages(data.messages);
-  }, [conversation.id]);
+  const beforeMessagesChange = useCallback((current: MessageView[], next: MessageView[], kind: HistoryChange) => {
+    const container = scrollRef.current;
+    if (!container) return;
+    const follow = kind === "initial" || (kind !== "older" && isNearMessageEnd(container));
+    const top = container.getBoundingClientRect().top;
+    const anchor = [...container.querySelectorAll<HTMLElement>("[data-message-id]")]
+      .find((element) => element.getBoundingClientRect().bottom > top);
+    pendingScroll.current = { follow, anchor: anchor?.dataset.messageId ?? null,
+      offset: anchor ? anchor.getBoundingClientRect().top - top : 0, scrollTop: container.scrollTop };
+    if (follow) { setUnread(0); setAwayFromEnd(false); }
+    else if (kind === "recent" && current.length) {
+      const last = current[current.length - 1];
+      const count = next.filter((message) => message.role === "user" && compareMessages(message, last) > 0).length;
+      setUnread((value) => value + count);
+    }
+  }, []);
 
-  useEffect(() => {
-    const initialLoad = window.setTimeout(() => void loadMessages(), 0);
-    const interval = window.setInterval(() => void loadMessages(), 2000);
-    return () => {
-      window.clearTimeout(initialLoad);
-      window.clearInterval(interval);
-    };
-  }, [loadMessages]);
+  const { messages, loaded, loadingOlder, hasOlder, loadError, olderError, refresh: loadMessages, loadOlder } =
+    useConversationMessages(conversation.id, beforeMessagesChange);
 
-  useEffect(() => {
-    messageEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+  useLayoutEffect(() => {
+    const container = scrollRef.current;
+    const pending = pendingScroll.current;
+    if (!container || !pending) return;
+    pendingScroll.current = null;
+    if (pending.follow) container.scrollTop = container.scrollHeight;
+    else {
+      const anchor = pending.anchor ? container.querySelector<HTMLElement>(`[data-message-id="${pending.anchor}"]`) : null;
+      container.scrollTop = anchor ? container.scrollTop + anchor.getBoundingClientRect().top -
+        container.getBoundingClientRect().top - pending.offset : pending.scrollTop;
+    }
   }, [messages]);
+
+  useEffect(() => {
+    const container = scrollRef.current;
+    if (!container) return;
+    // On mobile the first selected chat loads behind the conversation list.
+    // Scroll only on its first visible layout, never on later reading/resizes.
+    let hasBeenVisible = container.clientHeight > 0;
+    const observer = new ResizeObserver(() => {
+      if (container.clientHeight > 0 && !hasBeenVisible) {
+        container.scrollTop = container.scrollHeight;
+        hasBeenVisible = true;
+      }
+    });
+    observer.observe(container);
+    return () => observer.disconnect();
+  }, []);
+
+  function jumpToLatest() {
+    const container = scrollRef.current;
+    if (container) container.scrollTop = container.scrollHeight;
+    setUnread(0);
+    setAwayFromEnd(false);
+  }
 
   async function changeMode(mode: ConversationMode) {
     if (mode === conversation.mode || savingMode) return;
@@ -124,43 +161,72 @@ export function ConversationPanel({ conversation, onConversationChanged, onDelet
 
   async function removeConversation() {
     if (!window.confirm("¿Borrar esta conversación y todos sus mensajes?")) return;
-    await onDelete(conversation.id);
+    try { await onDelete(conversation.id); }
+    catch { setError("No se pudo borrar la conversación. Inténtalo de nuevo."); }
   }
 
   return (
-    <section className="flex min-h-0 flex-1 flex-col bg-slate-50">
-      <header className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 bg-white px-5 py-3">
-        <div className="min-w-0">
-          <h2 className="truncate font-semibold text-slate-950">{conversation.name || conversation.phone}</h2>
-          {conversation.name && <p className="text-xs text-slate-500">{conversation.phone}</p>}
+    <section className="terra-conversation flex min-h-0 min-w-0 flex-1 flex-col bg-[#f0f2f5]" aria-label="Chat del cliente">
+      <header className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-b border-[#dce3e2] px-4 py-3 sm:px-5">
+        <div className="flex min-w-0 items-center gap-3">
+          {onBack && <button type="button" onClick={onBack} className="size-11 shrink-0 rounded-lg p-2 text-sm text-emerald-800 md:hidden" aria-label="Volver a conversaciones">←</button>}
+          <div className="grid size-10 shrink-0 place-items-center rounded-full bg-[#d9e7e1] text-sm font-semibold text-[#42685b]" aria-hidden="true">{(conversation.name || "C").slice(0, 2).toUpperCase()}</div>
+          <div className="min-w-0">
+          <h2 className="truncate text-sm font-semibold text-slate-950 sm:text-base">{conversation.name || conversation.phone}</h2>
+          {conversation.name && <p className="mt-0.5 text-xs text-slate-600">{conversation.phone}</p>}
           {conversation.latest_order && (
             <p className="mt-1 text-xs font-medium text-emerald-700">
               Pedido #{conversation.latest_order.public_code} · {ORDER_STATUS_LABEL[conversation.latest_order.status]}
             </p>
           )}
+          </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          {whatsappUrl ? <a href={whatsappUrl} target="_blank" rel="noopener noreferrer" className="rounded-lg border border-emerald-200 bg-white px-3 py-2 text-xs font-semibold text-emerald-800 hover:bg-emerald-50" title="Se abre con la cuenta de WhatsApp activa en este dispositivo"><span className="sr-only sm:not-sr-only">Abrir </span>WhatsApp ↗</a> :
+            <span className="text-xs text-slate-500">Número sin formato internacional</span>}
           <ModeToggle mode={conversation.mode} disabled={savingMode} onChange={changeMode} />
+          <details className="relative">
+          <summary aria-label="Más acciones del chat" className="cursor-pointer list-none rounded-lg px-2 py-2 text-lg text-slate-600 hover:bg-white">⋮</summary>
           <button
             type="button"
             onClick={removeConversation}
-            className="rounded-lg px-3 py-2 text-xs font-semibold text-red-600 hover:bg-red-50"
+            className="absolute right-0 top-full z-20 mt-1 w-44 rounded-lg border border-slate-200 bg-white px-3 py-3 text-left text-xs font-semibold text-red-600 shadow-lg hover:bg-red-50"
           >
-            Borrar
+            Borrar conversación
           </button>
+          </details>
         </div>
       </header>
 
-      <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-4 sm:p-6">
-        {messages.length === 0 ? (
-          <p className="py-8 text-center text-sm text-slate-400">Cargando mensajes…</p>
-        ) : (
-          messages.map((message) => <MessageBubble key={message.id} message={message} />)
-        )}
-        <div ref={messageEndRef} />
+      <div className="relative flex min-h-0 flex-1 flex-col">
+        {loadError && <div role="status" className="flex shrink-0 items-center justify-between gap-2 bg-amber-50 px-4 py-2 text-xs text-amber-900"><span>{loadError}</span><button type="button" onClick={() => void loadMessages()} className="font-semibold underline">Reintentar</button></div>}
+        <div ref={scrollRef} data-testid="message-scroll" aria-label="Historial de mensajes" tabIndex={0}
+          onScroll={() => {
+            const nearEnd = scrollRef.current ? isNearMessageEnd(scrollRef.current) : true;
+            setAwayFromEnd(!nearEnd);
+            if (nearEnd) setUnread(0);
+          }}
+          className="terra-chat-background min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-5 [overflow-anchor:none] sm:px-7">
+          <div className="mx-auto max-w-4xl space-y-3">
+          {hasOlder && <div className="text-center"><button type="button" disabled={loadingOlder} onClick={() => void loadOlder()} className="rounded-full border border-[#d2dcd6] bg-white px-4 py-2 text-xs font-medium text-emerald-800 shadow-sm hover:bg-emerald-50 disabled:opacity-60">{loadingOlder ? "Cargando anteriores…" : "Cargar mensajes anteriores"}</button></div>}
+          {olderError && <p role="alert" className="rounded-lg bg-amber-50 p-3 text-center text-xs text-amber-900">{olderError}</p>}
+          {!loaded && !loadError && <p className="py-8 text-center text-sm text-slate-600">Cargando mensajes…</p>}
+          {loaded && !messages.length && <p className="py-8 text-center text-sm text-slate-600">Esta conversación todavía no tiene mensajes.</p>}
+          {loaded && messages.length > 0 && !hasOlder && <p className="text-center text-xs text-slate-600">Inicio de la conversación</p>}
+          {messages.map((message, index) => {
+            const date = new Date(message.created_at * 1000);
+            const previous = index ? new Date(messages[index - 1].created_at * 1000) : null;
+            return <Fragment key={message.id}>
+              {(!previous || date.toDateString() !== previous.toDateString()) && <div className="py-2 text-center"><time dateTime={date.toISOString()} className="rounded-lg bg-white/90 px-3 py-1.5 text-xs text-slate-600 shadow-sm">{date.toLocaleDateString("es", { day: "numeric", month: "long", year: "numeric" })}</time></div>}
+              <MessageBubble message={message} />
+            </Fragment>;
+          })}
+          </div>
+        </div>
+        {awayFromEnd && <button type="button" onClick={jumpToLatest} className="absolute right-5 bottom-4 rounded-full border border-emerald-200 bg-white px-4 py-2.5 text-xs font-semibold text-emerald-800 shadow-lg hover:bg-emerald-50"><span aria-live="polite">{unread ? `${unread} ${unread === 1 ? "mensaje nuevo" : "mensajes nuevos"}` : "Volver al final"}</span> ↓</button>}
       </div>
 
-      <div className="border-t border-slate-200 bg-white p-4">
+      <div className="shrink-0 border-t border-[#dce3e2] p-3 sm:px-5">
         {error && <p className="mb-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
         {conversation.mode === "AI" && (
           <p className="rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
@@ -179,15 +245,16 @@ export function ConversationPanel({ conversation, onConversationChanged, onDelet
               }
             }}
             rows={2}
+            aria-label="Escribe un mensaje"
             maxLength={4096}
             placeholder={conversation.mode === "HUMAN" ? "Escribe un mensaje…" : "El modo IA tiene el envío deshabilitado"}
-            className="min-h-11 flex-1 resize-none rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none transition focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100 disabled:cursor-not-allowed"
+            className="min-h-11 min-w-0 flex-1 resize-none rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm outline-none transition focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100 disabled:cursor-not-allowed"
           />
           <button
             type="button"
             onClick={() => void sendMessage()}
             disabled={conversation.mode !== "HUMAN" || sending || !draft.trim()}
-            className="self-end rounded-lg bg-amber-400 px-4 py-2 text-sm font-bold text-amber-950 transition hover:bg-amber-300 disabled:cursor-not-allowed disabled:opacity-50"
+            className="self-end rounded-xl bg-[#008069] px-4 py-3 text-sm font-semibold text-white transition hover:bg-emerald-800 disabled:cursor-not-allowed disabled:opacity-50"
           >
             {sending ? "Enviando…" : "Enviar"}
           </button>

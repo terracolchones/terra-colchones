@@ -1,12 +1,13 @@
 import { NextResponse, type NextRequest } from "next/server";
 import {
   getConversationById,
-  getMessages,
+  getDashboardMessagePage,
   insertMessage,
   updateMessageWaId,
 } from "@/lib/db";
 import { sendTextMessage } from "@/lib/meta/client";
 import { requireDashboardAuth } from "@/lib/dashboard-auth";
+import { parseMessageCursor } from "@/lib/message-history";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -27,10 +28,20 @@ export async function GET(request: NextRequest, { params }: Context) {
   const id = parseId((await params).conversationId);
   if (!id) return NextResponse.json({ error: "id inválido" }, { status: 400 });
 
+  const query = request.nextUrl.searchParams;
+  const beforeValue = query.get("before");
+  const afterValue = query.get("after");
+  const before = beforeValue === null ? undefined : parseMessageCursor(beforeValue);
+  const after = afterValue === null ? undefined : parseMessageCursor(afterValue);
+  if (before === null || after === null || (before && after) ||
+    query.getAll("before").length > 1 || query.getAll("after").length > 1) {
+    return NextResponse.json({ error: "Cursor de historial inválido" }, { status: 400, headers: { "Cache-Control": "no-store" } });
+  }
+
   const conversation = getConversationById(id);
   if (!conversation) return NextResponse.json({ error: "not found" }, { status: 404 });
   return NextResponse.json(
-    { conversation, messages: getMessages(id) },
+    { conversation, ...getDashboardMessagePage(id, { before, after }) },
     { headers: { "Cache-Control": "no-store" } },
   );
 }

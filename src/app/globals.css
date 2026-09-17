@@ -24,3 +24,12 @@ button,
 textarea {
   font: inherit;
 }
+
+.terra-chat-background {
+  background-color: #efeae2;
+  background-image: radial-gradient(#b6b2a429 1px, transparent 1px);
+  background-size: 18px 18px;
+}
+
+.terra-conversation ::-webkit-scrollbar { width: 7px; }
+.terra-conversation ::-webkit-scrollbar-thumb { background: #a7b7ae; border-radius: 8px; }

@@ -15,6 +15,7 @@ export function Dashboard({ info, onTestConnection }: DashboardProps) {
   const [conversations, setConversations] = useState<ConversationView[]>([]);
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [listError, setListError] = useState<string | null>(null);
+  const [mobileChatOpen, setMobileChatOpen] = useState(false);
 
   const loadConversations = useCallback(async () => {
     try {
@@ -56,25 +57,29 @@ export function Dashboard({ info, onTestConnection }: DashboardProps) {
   );
 
   return (
-    <main className="flex h-screen min-h-[560px] flex-col bg-slate-100">
+    <main className="flex h-dvh min-h-0 flex-col overflow-hidden bg-[#f0f2f5]">
       <DashboardHeader info={info} onTestConnection={onTestConnection} />
       <div className="flex min-h-0 flex-1">
-        <aside className="flex w-full max-w-sm shrink-0 flex-col border-r border-slate-200 bg-white md:w-80">
-          <div className="border-b border-slate-100 px-4 py-3">
-            <h2 className="text-sm font-bold text-slate-800">Conversaciones</h2>
+        <aside className={`${mobileChatOpen ? "hidden" : "flex"} w-full shrink-0 flex-col border-r border-slate-200 bg-white md:flex md:w-72 lg:w-80`}>
+          <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
+            <h2 className="text-sm font-semibold text-slate-800">Conversaciones</h2>
+            <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-600">{conversations.length}</span>
             {listError && <p className="mt-1 text-xs text-red-600">{listError}</p>}
           </div>
           <div className="min-h-0 flex-1 overflow-y-auto">
-            <ConversationList conversations={conversations} selectedId={selectedId} onSelect={setSelectedId} />
+            <ConversationList conversations={conversations} selectedId={selectedId} onSelect={(id) => { setSelectedId(id); setMobileChatOpen(true); }} />
           </div>
         </aside>
         {selectedConversation ? (
+          <div className={`${mobileChatOpen ? "flex" : "hidden"} min-h-0 min-w-0 flex-1 md:flex`}>
           <ConversationPanel
             key={selectedConversation.id}
             conversation={selectedConversation}
             onConversationChanged={loadConversations}
             onDelete={deleteConversation}
+            onBack={() => setMobileChatOpen(false)}
           />
+          </div>
         ) : (
           <section className="hidden flex-1 place-items-center bg-slate-50 p-8 text-center md:grid">
             <div>

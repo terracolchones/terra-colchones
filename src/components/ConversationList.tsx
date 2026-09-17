@@ -31,8 +31,9 @@ export function ConversationList({ conversations, selectedId, onSelect }: Conver
             key={conversation.id}
             type="button"
             onClick={() => onSelect(conversation.id)}
-            className={`w-full px-4 py-4 text-left transition ${
-              selected ? "bg-emerald-50" : "bg-white hover:bg-slate-50"
+            aria-pressed={selected}
+            className={`w-full border-l-3 px-4 py-4 text-left transition ${
+              selected ? "border-emerald-600 bg-[#e9f2ed]" : "border-transparent bg-white hover:bg-slate-50"
             }`}
           >
             <div className="flex items-center justify-between gap-3">
@@ -52,7 +53,7 @@ export function ConversationList({ conversations, selectedId, onSelect }: Conver
             {conversation.name && <p className="mt-0.5 text-xs text-slate-500">{conversation.phone}</p>}
             {conversation.latest_order && (
               <p className="mt-1 truncate text-[11px] font-semibold text-emerald-700">
-                #{conversation.latest_order.public_code} · {conversation.latest_order.status === "awaiting_location" ? "GPS" : conversation.latest_order.status === "awaiting_payment" ? "Pago" : conversation.latest_order.status === "payment_proof_received" ? "En revisión" : "Confirmación"}
+                #{conversation.latest_order.public_code} · {conversation.latest_order.status === "awaiting_location" ? "GPS pendiente" : conversation.latest_order.status === "awaiting_payment" ? "Pago pendiente" : conversation.latest_order.status === "payment_proof_received" ? "En revisión" : conversation.latest_order.status === "payment_confirmed" ? "Pago confirmado" : "Confirmación"}
               </p>
             )}
             <p className="mt-2 truncate text-xs text-slate-600">
