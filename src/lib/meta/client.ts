@@ -1,5 +1,7 @@
 import { randomBytes } from "node:crypto";
 import { diagnostic, messageRef, type MessageKind } from "./diagnostics";
+import { readBoundedBody } from "@/lib/panel/files";
+import { validateFile } from "@/lib/panel/contracts";
 
 interface GraphErrorBody {
   error?: { message?: string; code?: number; error_subcode?: number };
@@ -89,7 +91,7 @@ export async function sendTextMessage(phone: string, body: string): Promise<{ wa
   });
 }
 
-async function sendGraphMessage(phone: string, message: GraphMessagePayload): Promise<{ wa_message_id: string }> {
+async function sendGraphMessage(phone: string, message: GraphMessagePayload, signal?: AbortSignal): Promise<{ wa_message_id: string }> {
   const kind: MessageKind = message.type === "text" ? "text" : message.type === "image" ? "image"
     : message.type === "interactive" && typeof message.interactive === "object" && message.interactive !== null
       ? (message.interactive as { type?: unknown }).type === "cta_url" ? "cta_url"
@@ -110,6 +112,7 @@ async function sendGraphMessage(phone: string, message: GraphMessagePayload): Pr
   try {
     response = await fetch(`${graphBaseUrl()}/${phoneId}/messages`, {
       method: "POST",
+      signal,
       headers: {
         Authorization: `Bearer ${token}`,
         "Content-Type": "application/json",
@@ -210,6 +213,38 @@ export interface PhoneNumberInfo {
   display_phone_number: string;
   verified_name: string;
   quality_rating: string;
+}
+
+/** Upload once, then send by provider ID. Private files never need a public URL. */
+export async function uploadPanelMedia(bytes: Uint8Array, mime: string, filename: string): Promise<string> {
+  validateFile(bytes,mime);
+  const {phoneId,token}=getMetaCredentials();const data=new FormData();
+  data.set("messaging_product","whatsapp");data.set("type",mime);
+  data.set("file",new Blob([Uint8Array.from(bytes)],{type:mime}),filename);
+  const response=await fetch(`${graphBaseUrl()}/${phoneId}/media`,{method:"POST",headers:{Authorization:`Bearer ${token}`},body:data,signal:AbortSignal.timeout(20000)});
+  if(!response.ok)throw await graphError(response);
+  const result=await response.json() as {id?:unknown};
+  if(typeof result.id!=="string"||!/^\d+$/.test(result.id))throw new Error("No se pudo subir el archivo a WhatsApp.");
+  return result.id;
+}
+
+export async function downloadPanelMedia(id: string, mime: string): Promise<Uint8Array> {
+  if(!/^\d{1,100}$/.test(id))throw new Error("Referencia de archivo inválida.");
+  const {phoneId,token}=getMetaCredentials();
+  const response=await fetch(`${graphBaseUrl()}/${id}?phone_number_id=${encodeURIComponent(phoneId)}`,{headers:{Authorization:`Bearer ${token}`},signal:AbortSignal.timeout(10000)});
+  if(!response.ok)throw await graphError(response);
+  const metadata=await response.json() as {url?:unknown};
+  const url=new URL(typeof metadata.url==="string"?metadata.url:"");
+  if(url.protocol!=="https:"||url.username||url.password||url.port||url.hostname!=="lookaside.fbsbx.com")throw new Error("Origen de archivo no permitido.");
+  const file=await fetch(url,{headers:{Authorization:`Bearer ${token}`},redirect:"error",signal:AbortSignal.timeout(15000)});
+  if(!file.ok)throw new Error("No se pudo recuperar el archivo.");
+  const bytes=await readBoundedBody(file);validateFile(bytes,mime);return bytes;
+}
+
+export async function sendPanelMedia(phone: string, id: string, mime: string, filename: string, caption: string) {
+  if(!/^\d{1,100}$/.test(id)||caption.length>1024)throw new Error("Archivo o descripción inválidos.");
+  const type=mime==="application/pdf"?"document":"image";
+  return sendGraphMessage(phone,{type,[type]:{id,...(caption?{caption}:{}),...(type==="document"?{filename}:{})}},AbortSignal.timeout(20000));
 }
 
 export async function getPhoneNumberInfo(): Promise<PhoneNumberInfo> {

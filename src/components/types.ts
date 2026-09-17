@@ -22,6 +22,7 @@ export interface ConversationView {
 }
 
 export interface MessageView {
+  asset?: import("@/lib/panel/contracts").MessageAsset;
   id: number;
   conversation_id: number;
   role: MessageRole;

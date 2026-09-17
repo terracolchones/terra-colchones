@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+vi.mock("@/lib/panel/service", () => ({ incomingAssets: { capture: vi.fn().mockResolvedValue(undefined) } }));
 
 /**
  * Behavioral acceptance at the real handler boundary. All persistence, catalog,

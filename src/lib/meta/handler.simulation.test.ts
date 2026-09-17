@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+vi.mock("@/lib/panel/service", () => ({ incomingAssets: { capture: vi.fn().mockResolvedValue(undefined) } }));
 
 /**
  * Offline characterization of the production handler, not a WhatsApp test.
@@ -52,6 +53,7 @@ vi.mock("@/lib/catalog-order-flow", () => ({ dispatchCatalogLocationRequest: fix
 vi.mock("@/lib/catalog-payment-flow", () => ({ dispatchCatalogPaymentQr: fixture.dispatchCatalogPaymentQr }));
 
 import { processWebhookPayload } from "@/lib/meta/handler";
+import { incomingAssets } from "@/lib/panel/service";
 
 function conversation() {
   return { id: 1, phone: fixture.phone, name: "Synthetic customer", mode: fixture.mode, last_message_at: null, created_at: 0 };
@@ -94,6 +96,33 @@ function expectNoDelivery() {
   expect(fixture.dispatchCatalogPaymentQr).not.toHaveBeenCalled();
   expect(fixture.generateAssistantReply).not.toHaveBeenCalled();
 }
+
+describe("panel evidence capture at the real webhook boundary", () => {
+  it.each([
+    { type: "image", image: { id: "12345", mime_type: "image/png" } },
+    { type: "document", document: { id: "12346", mime_type: "application/pdf", filename: "prueba.pdf" } },
+    { type: "location", location: { latitude: 0, longitude: 0 } },
+  ])("captures $type once in HUMAN without sending a reply", async (body) => {
+    fixture.mode = "HUMAN";
+    fixture.db.getUnambiguousActiveCatalogOrderForConversation.mockReturnValue(order());
+    const message = { id: "synthetic-media-capture", from: fixture.phone, ...body };
+    await processWebhookPayload(payload(message));
+    await processWebhookPayload(payload(message));
+    expect(incomingAssets.capture).toHaveBeenCalledExactlyOnceWith({
+      messageId: 1, conversationId: 1, orderId: "synthetic-order-alpha", message,
+    });
+    expectNoDelivery();
+  });
+
+  it("preserves the existing proof acknowledgment if private capture fails", async () => {
+    fixture.db.getLatestActiveCatalogOrderForConversation.mockReturnValue(order());
+    vi.mocked(incomingAssets.capture).mockRejectedValueOnce(new Error("synthetic storage failure"));
+    await processWebhookPayload(payload({ id: "synthetic-capture-failure", from: fixture.phone, type: "image", image: { id: "12345", mime_type: "image/png" } }));
+    expect(fixture.db.markCatalogOrderPaymentProof).toHaveBeenCalledWith("synthetic-order-alpha");
+    expect(fixture.meta.sendTextMessage).toHaveBeenCalledOnce();
+    expect(fixture.meta.sendTextMessage.mock.calls[0][1]).toContain("no se aprueba automáticamente");
+  });
+});
 
 beforeEach(() => {
   vi.resetAllMocks();

@@ -33,6 +33,8 @@ export const config = {
     "/",
     "/conocimiento/:path*",
     "/comportamiento/:path*",
+    "/pedidos/:path*",
+    "/api/panel/:path*",
     "/catalogo/:path*",
     "/catalogo-admin/:path*",
     "/api/connection/status",

@@ -6,6 +6,8 @@ import { ModeToggle } from "@/components/ModeToggle";
 import type { ConversationMode, ConversationView, MessageView } from "@/components/types";
 import { useConversationMessages, type HistoryChange } from "@/components/useConversationMessages";
 import { compareMessages, isNearMessageEnd, whatsappContactUrl } from "@/lib/message-history";
+import { AttachmentComposer } from "./AttachmentComposer";
+import { OrderPane } from "./OrderPane";
 
 interface ConversationPanelProps {
   conversation: ConversationView;
@@ -32,11 +34,24 @@ export function ConversationPanel({ conversation, onConversationChanged, onDelet
   const pendingScroll = useRef<{ follow: boolean; anchor: string | null; offset: number; scrollTop: number } | null>(null);
   const [awayFromEnd, setAwayFromEnd] = useState(false);
   const [unread, setUnread] = useState(0);
+  const [showOrder, setShowOrder] = useState(false);
   const whatsappUrl = whatsappContactUrl(conversation.phone);
 
   const beforeMessagesChange = useCallback((current: MessageView[], next: MessageView[], kind: HistoryChange) => {
     const container = scrollRef.current;
     if (!container) return;
+    // A mobile chat stays mounted while its order sheet or the list is open.
+    // Hidden elements report zero dimensions: treating that as "at the end"
+    // would reset the reader's position when new messages arrive in the meantime.
+    if (container.clientHeight === 0) {
+      pendingScroll.current = null;
+      if (kind === "recent" && current.length) {
+        const last = current[current.length - 1];
+        const count = next.filter((message) => message.role === "user" && compareMessages(message, last) > 0).length;
+        if (count) { setUnread((value) => value + count); setAwayFromEnd(true); }
+      }
+      return;
+    }
     const follow = kind === "initial" || (kind !== "older" && isNearMessageEnd(container));
     const top = container.getBoundingClientRect().top;
     const anchor = [...container.querySelectorAll<HTMLElement>("[data-message-id]")]
@@ -166,7 +181,8 @@ export function ConversationPanel({ conversation, onConversationChanged, onDelet
   }
 
   return (
-    <section className="terra-conversation flex min-h-0 min-w-0 flex-1 flex-col bg-[#f0f2f5]" aria-label="Chat del cliente">
+    <div className="flex min-h-0 min-w-0 flex-1">
+    <section className={`terra-conversation ${showOrder?"hidden lg:flex":"flex"} min-h-0 min-w-0 flex-1 flex-col bg-[#f0f2f5]`} aria-label="Chat del cliente">
       <header className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-b border-[#dce3e2] px-4 py-3 sm:px-5">
         <div className="flex min-w-0 items-center gap-3">
           {onBack && <button type="button" onClick={onBack} className="size-11 shrink-0 rounded-lg p-2 text-sm text-emerald-800 md:hidden" aria-label="Volver a conversaciones">←</button>}
@@ -185,6 +201,7 @@ export function ConversationPanel({ conversation, onConversationChanged, onDelet
           {whatsappUrl ? <a href={whatsappUrl} target="_blank" rel="noopener noreferrer" className="rounded-lg border border-emerald-200 bg-white px-3 py-2 text-xs font-semibold text-emerald-800 hover:bg-emerald-50" title="Se abre con la cuenta de WhatsApp activa en este dispositivo"><span className="sr-only sm:not-sr-only">Abrir </span>WhatsApp ↗</a> :
             <span className="text-xs text-slate-500">Número sin formato internacional</span>}
           <ModeToggle mode={conversation.mode} disabled={savingMode} onChange={changeMode} />
+          <button type="button" onClick={()=>setShowOrder(true)} className="rounded-lg border border-[#b6d7c6] bg-white px-3 py-2 text-xs font-semibold text-[#006b57] lg:hidden">Ver pedido</button>
           <details className="relative">
           <summary aria-label="Más acciones del chat" className="cursor-pointer list-none rounded-lg px-2 py-2 text-lg text-slate-600 hover:bg-white">⋮</summary>
           <button
@@ -259,6 +276,8 @@ export function ConversationPanel({ conversation, onConversationChanged, onDelet
             {sending ? "Enviando…" : "Enviar"}
           </button>
         </div>
+        <div className="flex flex-wrap items-center gap-2">
+        <AttachmentComposer conversation={conversation} onSent={async()=>{await Promise.all([loadMessages(),onConversationChanged()]);}}/>
         <button
           type="button"
           onClick={() => void sendPaymentQr()}
@@ -267,7 +286,10 @@ export function ConversationPanel({ conversation, onConversationChanged, onDelet
         >
           {sendingQr ? "Enviando QR…" : "Enviar QR de pago"}
         </button>
+        </div>
       </div>
     </section>
+    <aside className={`${showOrder?"block":"hidden"} min-h-0 w-full shrink-0 border-l border-[#dce3e2] lg:block lg:w-72`}><OrderPane key={conversation.id} conversationId={conversation.id} onClose={()=>setShowOrder(false)}/></aside>
+    </div>
   );
 }

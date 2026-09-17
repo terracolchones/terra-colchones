@@ -126,6 +126,14 @@ Se corrigieron durante la revisión dos detalles: el cursor de refresco de una
 primera página de 50 elementos y la primera apertura del chat oculto en móvil.
 Las verificaciones anteriores incluyen esas correcciones.
 
+## Ampliación posterior de la ficha y los adjuntos
+
+La segunda etapa implementa comprobantes, GPS, nombre aportado por el cliente,
+adjuntos manuales, ficha privada reutilizable y colores de WhatsApp. La evidencia
+actualizada (597 pruebas) y sus límites están en
+[PANEL_ARCHIVOS_LOCAL_20260917.md](PANEL_ARCHIVOS_LOCAL_20260917.md). Los resultados
+anteriores de esta página corresponden a la primera corrección del historial.
+
 ## Límites y siguiente paso
 
 La vista comprueba interacción y presentación usando los componentes reales.

@@ -28,7 +28,8 @@ export function mergeMessages(current: MessageView[], received: MessageView[]): 
   for (const message of received) {
     const previous = byId.get(message.id);
     if (!previous || previous.content !== message.content || previous.role !== message.role ||
-      previous.wa_message_id !== message.wa_message_id || previous.created_at !== message.created_at) {
+      previous.wa_message_id !== message.wa_message_id || previous.created_at !== message.created_at ||
+      JSON.stringify(previous.asset) !== JSON.stringify(message.asset)) {
       byId.set(message.id, message);
       changed = true;
     }

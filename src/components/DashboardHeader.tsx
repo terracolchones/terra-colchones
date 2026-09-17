@@ -30,7 +30,7 @@ export function DashboardHeader({ info, onTestConnection }: DashboardHeaderProps
   </>;
 
   return (
-    <header className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-b border-slate-200 bg-white px-4 py-3 sm:px-5">
+    <header className="terra-dashboard-header flex shrink-0 flex-wrap items-center justify-between gap-3 border-b border-[#006b57] bg-[#008069] px-4 py-3 text-white sm:px-5">
       <div className="flex min-w-0 flex-1 items-center gap-3">
         <div className="grid size-10 shrink-0 place-items-center rounded-xl bg-[#008069] text-lg font-bold text-white">T</div>
         <div className="min-w-0">

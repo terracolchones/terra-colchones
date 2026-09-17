@@ -60,7 +60,7 @@ export function Dashboard({ info, onTestConnection }: DashboardProps) {
     <main className="flex h-dvh min-h-0 flex-col overflow-hidden bg-[#f0f2f5]">
       <DashboardHeader info={info} onTestConnection={onTestConnection} />
       <div className="flex min-h-0 flex-1">
-        <aside className={`${mobileChatOpen ? "hidden" : "flex"} w-full shrink-0 flex-col border-r border-slate-200 bg-white md:flex md:w-72 lg:w-80`}>
+        <aside className={`${mobileChatOpen ? "hidden" : "flex"} w-full shrink-0 flex-col border-r border-[#dce3e2] bg-white md:flex md:w-60 lg:w-64`}>
           <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
             <h2 className="text-sm font-semibold text-slate-800">Conversaciones</h2>
             <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-600">{conversations.length}</span>

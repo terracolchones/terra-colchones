@@ -1,7 +1,9 @@
 # Comprobantes y GPS de WhatsApp reutilizables con Shopify
 
 Fecha: 17 de septiembre de 2026.
-Estado: decisión de diseño y plan; integración aún no implementada ni activada.
+Estado: captura, ficha privada y adjuntos implementados y probados en local;
+conector Shopify aún pendiente y sin activación. Detalle y límites en
+[PANEL_ARCHIVOS_LOCAL_20260917.md](PANEL_ARCHIVOS_LOCAL_20260917.md).
 
 ## Decisión
 
@@ -14,7 +16,7 @@ El cliente seguirá comprando con el botón Comprar por WhatsApp, sin formulario
 adicionales ni obligación de pasar por el checkout de Shopify. El usuario debe
 enviar el mensaje prellenado para confirmar desde WhatsApp.
 
-## Qué existe y qué falta
+## Situación al definir el plan (antes de la implementación local)
 
 - El panel local mejorado está en `codex/agent-panel-chat-20260917`, con base
   `7994c2e`. Su demo usa datos ficticios y no representa una conexión Shopify.
@@ -58,7 +60,7 @@ No insertar datos privados en atributos que puedan aparecer en el escaparate,
 notificaciones o documentos del cliente. Al convertir un borrador en pedido,
 conservar y comprobar expresamente la relación y el enlace; no asumir su copia.
 
-## Implementación prevista
+## Plan original y etapas pendientes
 
 ### Envío de archivos desde el panel
 

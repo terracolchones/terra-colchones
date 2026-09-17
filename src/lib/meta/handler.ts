@@ -7,9 +7,11 @@ import { generateAssistantReply } from "@/lib/openai";
 import { sendCatalogCtaMessage, sendTextMessage } from "@/lib/meta/client";
 import { diagnostic, messageRef } from "@/lib/meta/diagnostics";
 import { createWebhookProcessor } from "@/lib/meta/handler-core";
+import { incomingAssets } from "@/lib/panel/service";
 
 /** Production wiring only; the same processor is injected with fixtures in the simulator. */
 export const processWebhookPayload = createWebhookProcessor({
+  captureIncomingAsset: incomingAssets.capture,
   db,
   getProductForCatalogLead,
   parseCatalogLeadContext,

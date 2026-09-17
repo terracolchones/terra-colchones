@@ -33,3 +33,9 @@ textarea {
 
 .terra-conversation ::-webkit-scrollbar { width: 7px; }
 .terra-conversation ::-webkit-scrollbar-thumb { background: #a7b7ae; border-radius: 8px; }
+
+.terra-dashboard-header h1, .terra-dashboard-header p, .terra-dashboard-header h1 span { color: #fff; }
+.terra-dashboard-header a, .terra-dashboard-header > div > button, .terra-dashboard-header summary { color:#fff; border-color:#ffffff50; background:#ffffff12; }
+.terra-dashboard-header details > div { background:#fff; }
+.terra-dashboard-header details a, .terra-dashboard-header details button { color:#006b57; border-color:#dce3e2; background:#fff; }
+.terra-dashboard-header a:hover, .terra-dashboard-header > div > button:hover { background:#ffffff26; }

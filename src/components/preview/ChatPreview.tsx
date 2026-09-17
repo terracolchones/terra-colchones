@@ -21,7 +21,7 @@ export function ChatPreview() {
     };
     const readyTimer = window.setTimeout(() => setReady(true), 0);
     const counter = window.setInterval(() => setPolls(fixture.count()), 500);
-    return () => { window.fetch = originalFetch; window.clearTimeout(readyTimer); window.clearInterval(counter); };
+    return () => { window.fetch = originalFetch; window.clearTimeout(readyTimer); window.clearInterval(counter); fixture.dispose(); };
   }, [fixture]);
 
   const controls = <>

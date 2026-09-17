@@ -5,6 +5,7 @@ import path from "node:path";
 import { createPublicOrderCode, normalizePublicOrderCode } from "@/lib/order-code";
 import { catalogDeliveryReservationState } from "@/lib/catalog-delivery-reservation-policy";
 import { readDashboardMessagePage, type DashboardHistoryOptions } from "@/lib/dashboard-history";
+import { createPanelRepository, type PanelRepository } from "@/lib/panel/repository";
 
 export type ConversationMode = "AI" | "HUMAN";
 export type MessageRole = "user" | "assistant" | "human";
@@ -642,7 +643,15 @@ export function updateMessageWaId(messageId: number, waMessageId: string): void 
 }
 
 export function getDashboardMessagePage(conversationId: number, options: DashboardHistoryOptions = {}) {
-  return readDashboardMessagePage(getDatabase(), asPositiveId(conversationId), options);
+  const page = readDashboardMessagePage(getDatabase(), asPositiveId(conversationId), options);
+  return {...page, messages: getPanelRepository().decorate(page.messages)};
+}
+
+let panelRepository: PanelRepository | undefined;
+export function getPanelRepository(): PanelRepository {
+  if (panelRepository) return panelRepository;
+  const connection=getDatabase();
+  return panelRepository=createPanelRepository({exec:sql=>connection.exec(sql),prepare:sql=>connection.prepare<(string|number|null)[]>(sql)});
 }
 
 export function getMessages(conversationId: number, limit = 50): Message[] {

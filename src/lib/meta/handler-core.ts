@@ -8,6 +8,7 @@ import { parseOrderConfirmationCode } from "@/lib/order-code";
 
 /** Provider and storage boundaries are injected so the exact flow can run offline. */
 export interface WebhookDependencies {
+  captureIncomingAsset?: (input: import("@/lib/panel/incoming").IncomingAssetInput) => Promise<void>;
   db: Pick<typeof import("@/lib/db"),
     | "claimCatalogOrder"
     | "createCatalogCheckoutSession"
@@ -452,7 +453,8 @@ export function createWebhookProcessor(dependencies: WebhookDependencies): Webho
     if (!reserveIncomingMessage(waMessageId, "location")) return;
 
     const conversation = getOrCreateConversation(phone, contactName);
-    insertMessage(conversation.id, "user", "Ubicación de entrega recibida.", waMessageId);
+    const messageId = insertMessage(conversation.id, "user", "Ubicación de entrega recibida.", waMessageId);
+    await captureAsset(messageId, conversation.id, message);
     if (!canAutomate(conversation)) {
       if (getConversationById(conversation.id)?.mode !== "HUMAN") return;
       const manualOrder = getUnambiguousActiveCatalogOrderForConversation(conversation.id);
@@ -494,7 +496,8 @@ export function createWebhookProcessor(dependencies: WebhookDependencies): Webho
     if (!waMessageId || !phone || !reserveIncomingMessage(waMessageId, "image")) return;
 
     const conversation = getOrCreateConversation(phone, contactName);
-    insertMessage(conversation.id, "user", "Comprobante de pago recibido.", waMessageId);
+    const messageId = insertMessage(conversation.id, "user", "Comprobante de pago recibido.", waMessageId);
+    await captureAsset(messageId, conversation.id, message);
     if (!canAutomate(conversation)) {
       if (getConversationById(conversation.id)?.mode !== "HUMAN") return;
       const manualOrder = getUnambiguousActiveCatalogOrderForConversation(conversation.id);
@@ -527,6 +530,20 @@ export function createWebhookProcessor(dependencies: WebhookDependencies): Webho
     insertMessage(conversation.id, "user", "Interacción recibida.", waMessageId);
     if (!canAutomate(conversation)) return;
     await sendCatalog(conversation, phone, origin);
+  }
+
+  async function captureAsset(messageId: number, conversationId: number, message: RecordValue) {
+    if(!dependencies.captureIncomingAsset)return;
+    const order=getUnambiguousActiveCatalogOrderForConversation(conversationId);
+    try {await dependencies.captureIncomingAsset({messageId,conversationId,orderId:order?.id??null,message});}
+    catch {diagnostic({event:"history.persistence_failed"});}
+  }
+
+  async function handleDocumentMessage(message: RecordValue, name: string | null) {
+    if(typeof message.id!=="string"||typeof message.from!=="string"||!reserveIncomingMessage(message.id,"unknown"))return;
+    const conversation=getOrCreateConversation(message.from,name);
+    const messageId=insertMessage(conversation.id,"user","Documento recibido.",message.id);
+    await captureAsset(messageId,conversation.id,message);
   }
 
   async function processWebhookPayload(payload: unknown, origin?: string): Promise<void> {
@@ -574,6 +591,8 @@ export function createWebhookProcessor(dependencies: WebhookDependencies): Webho
             await handleLocationMessage(rawMessage, name);
           } else if (rawMessage.type === "image") {
             await handleImageMessage(rawMessage, name);
+          } else if (rawMessage.type === "document") {
+            await handleDocumentMessage(rawMessage, name);
           } else {
             diagnostic({ event: "message.unsupported", kind: "unknown", message_ref: messageRef(rawMessage.id) });
           }
