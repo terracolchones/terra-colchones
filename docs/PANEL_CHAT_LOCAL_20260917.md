@@ -47,6 +47,11 @@ arquitectura entre servicios en esta entrega.
 Imágenes, comprobantes visuales, GPS en mapa, ficha ampliada de pedido y Shopify
 continúan fuera de esta etapa.
 
+El diseño de esa evolución se registra en
+[Comprobantes y GPS reutilizables con Shopify](PLAN_DATOS_WHATSAPP_SHOPIFY_20260917.md).
+Es un plan pendiente: la vista local actual no incluye esas funciones ni una
+conexión con Shopify.
+
 ## Abrir y probar la vista
 
 Desde este worktree:
