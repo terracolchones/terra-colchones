@@ -60,6 +60,29 @@ conservar y comprobar expresamente la relación y el enlace; no asumir su copia.
 
 ## Implementación prevista
 
+### Envío de archivos desde el panel
+
+Requisito añadido por el usuario: además de recibir y consultar archivos, debe
+existir la posibilidad de enviarlos. La maqueta incorpora **Adjuntar** para
+imágenes JPG/PNG y documentos PDF, con destinatario visible, vista previa, mensaje
+opcional y acción explícita de envío. Conserva el botón dedicado al QR de Terra.
+La maqueta solo usa muestras; no selecciona, lee, sube ni envía archivos reales.
+
+Al implementar el transporte real, conservar las restricciones del modo HUMANO
+para adjuntos manuales y el flujo existente del QR, validar archivos en servidor,
+y registrar adjuntos salientes separados de comprobantes entrantes. Mostrar
+envío pendiente, fallo y confirmación según evidencia del proveedor, sin duplicar
+un envío cuyo resultado sea incierto. Reutilizar el almacenamiento privado y la
+consulta de medios de la ficha compartida. Esta función requiere ampliar el
+envío del agente; no se obtiene solo con modificar su interfaz.
+
+Se pidió aclarar si el destino de los archivos será el cliente, el encargado de
+revisión o ambos. La maqueta actual representa el envío al cliente; un reenvío a
+terceros no está configurado ni autorizado por una muestra visual. El acceso a la
+ficha desde Shopify sigue siendo una consulta privada, distinta de enviar archivos.
+
+### Secuencia de integración
+
 1. **Captura y almacenamiento común en el agente.** Registrar una referencia
    persistente al medio entrante, descargarlo mediante el proveedor y guardarlo
    en almacenamiento privado. Asociar mensaje, archivo y GPS al pedido correcto.
@@ -105,6 +128,8 @@ APIs ni la prueba real necesaria para declarar la integración compatible.
 - Paso de borrador a pedido: se conserva la ficha y se refleja el pago confirmado
   por el encargado, sin volver a solicitar GPS ni reenviar QR automáticamente.
 - Mantener las pruebas actuales del chat, modo HUMANO, deduplicación y envíos.
+- Adjuntos salientes: destinatario correcto, cancelación sin envío, restricciones
+  del modo HUMANO, validación del archivo y recuperación ante resultados inciertos.
 - Ejecutar pruebas, TypeScript, lint y build antes de entregar código funcional.
 
 ## Fuentes y límites verificados
